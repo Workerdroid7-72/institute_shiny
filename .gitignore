@@ -1,0 +1,9 @@
+# Ignore environment files containing secrets
+.env
+.env.local
+
+# Ignore R user-specific files
+.Rhistory
+.RData
+.Rproj.user/
+.Ruserdata
