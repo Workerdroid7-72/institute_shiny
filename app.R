@@ -4,8 +4,9 @@ library(dplyr)
 library(DBI)
 library(plotly)
 
-# Explicitly source the global environment file
 source("global.R")
+source("R/ui_characteristics.R")
+source("R/server_characteristics.R")
 
 # ==============================================================================
 # USER INTERFACE (UI)
@@ -199,8 +200,14 @@ ui <- bslib::page_navbar(
       plotly::plotlyOutput("chart_core1_over_time", height = "400px")
     )
     
-  )
+    
+    
+  ), 
+  # NEW: Characteristics tab
+  ui_characteristics
+  
 )
+
 
 # ==============================================================================
 # SERVER LOGIC
@@ -387,15 +394,33 @@ server <- function(input, output, session) {
       filtered <- dplyr::filter(filtered, user_type == input$filter_user_type)
     }
     
+    # # Account Manager Filter
+    # if (!is.null(input$filter_account_mgr) &&
+    #     input$filter_account_mgr != "All") {
+    #   filtered <- dplyr::filter(
+    #     filtered,
+    #     account_manager_name == input$filter_account_mgr |
+    #       is.na(account_manager_name) |
+    #       account_manager_name == "None / Company Staff"
+    #   )
+    # }
+    
     # Account Manager Filter
-    if (!is.null(input$filter_account_mgr) &&
-        input$filter_account_mgr != "All") {
-      filtered <- dplyr::filter(
-        filtered,
-        account_manager_name == input$filter_account_mgr |
-          is.na(account_manager_name) |
-          account_manager_name == "None / Company Staff"
-      )
+    if (!is.null(input$filter_account_mgr) && input$filter_account_mgr != "All") {
+      if (input$filter_account_mgr == "None / Company Staff") {
+        # Special case: show users without a dedicated account manager
+        filtered <- dplyr::filter(
+          filtered, 
+          is.na(account_manager_name) | 
+            account_manager_name == "None / Company Staff"
+        )
+      } else {
+        # Normal case: show only users with this specific account manager
+        filtered <- dplyr::filter(
+          filtered, 
+          account_manager_name == input$filter_account_mgr
+        )
+      }
     }
     
     return(filtered)
@@ -505,17 +530,15 @@ server <- function(input, output, session) {
     
     monthly_data <- data %>%
       dplyr::mutate(month = as.Date(lubridate::floor_date(date_registered, "month"))) %>%
-      dplyr::group_by(month, user_type) %>%                                  
+      dplyr::group_by(month, user_type) %>%
       dplyr::summarise(count = dplyr::n(), .groups = "drop")
     
     # Calculate x-axis limits
     start_date <- min(monthly_data$month)
     end_date <- lubridate::floor_date(lubridate::today() + lubridate::days(31), "month")
     
-    p <- ggplot2::ggplot(
-      monthly_data,
-      ggplot2::aes(x = month, y = count, color = user_type)
-    ) +
+    p <- ggplot2::ggplot(monthly_data,
+                         ggplot2::aes(x = month, y = count, color = user_type)) +
       ggplot2::geom_line(size = 1.2) +
       ggplot2::geom_point(size = 2) +
       ggplot2::labs(
@@ -554,17 +577,15 @@ server <- function(input, output, session) {
     shiny::req(nrow(data) > 0)
     
     monthly_data <- data %>%
-      dplyr::mutate(month = as.Date(lubridate::floor_date(core_1_completed_date, "month"))) %>%  
-      dplyr::group_by(month, user_type) %>%                                  
+      dplyr::mutate(month = as.Date(lubridate::floor_date(core_1_completed_date, "month"))) %>%
+      dplyr::group_by(month, user_type) %>%
       dplyr::summarise(count = dplyr::n(), .groups = "drop")
     
     start_date <- min(monthly_data$month)
     end_date <- lubridate::floor_date(lubridate::today() + lubridate::days(31), "month")
     
-    p <- ggplot2::ggplot(
-      monthly_data,
-      ggplot2::aes(x = month, y = count, color = user_type)
-    ) +
+    p <- ggplot2::ggplot(monthly_data,
+                         ggplot2::aes(x = month, y = count, color = user_type)) +
       ggplot2::geom_line(size = 1.2) +
       ggplot2::geom_point(size = 2) +
       ggplot2::labs(
@@ -758,6 +779,10 @@ server <- function(input, output, session) {
     metric_data <- dplyr::filter(data, user_type == "Unknown Role")
     create_user_table(metric_data)
   })
+  
+  
+  #characteristics tab
+  server_characteristics(input, output, session)
   
   
 }
