@@ -477,15 +477,26 @@ server <- function(input, output, session) {
   # ============================================================================
   # METRIC 5: Inactive Users (%)
   # ============================================================================
+  # output$metric_inactive_pct <- shiny::renderText({
+  #   data <- filtered_user_data()
+  #   if (is.null(data) || nrow(data) == 0)
+  #     return("0%")
+  #   
+  #   total_users <- nrow(data)
+  #   cutoff_date <- lubridate::today() - lubridate::days(30)
+  #   active_count <- sum(data$last_active_date >= cutoff_date, na.rm = TRUE)
+  #   inactive_count <- total_users - active_count
+  #   inactive_pct <- (inactive_count / total_users) * 100
+  #   
+  #   paste0(round(inactive_pct, 1), "%")
+  # })
   output$metric_inactive_pct <- shiny::renderText({
     data <- filtered_user_data()
     if (is.null(data) || nrow(data) == 0)
       return("0%")
     
     total_users <- nrow(data)
-    cutoff_date <- lubridate::today() - lubridate::days(30)
-    active_count <- sum(data$last_active_date >= cutoff_date, na.rm = TRUE)
-    inactive_count <- total_users - active_count
+    inactive_count <- sum(data$is_truly_inactive == TRUE, na.rm = TRUE)
     inactive_pct <- (inactive_count / total_users) * 100
     
     paste0(round(inactive_pct, 1), "%")
@@ -759,10 +770,7 @@ server <- function(input, output, session) {
   # Inactive Users table
   output$user_table_inactive <- DT::renderDT({
     data <- filtered_user_data()
-    cutoff_date <- lubridate::today() - lubridate::days(30)
-    metric_data <- dplyr::filter(data,
-                                 last_active_date < cutoff_date |
-                                   is.na(last_active_date))
+    metric_data <- dplyr::filter(data, is_truly_inactive == TRUE)
     create_user_table(metric_data)
   })
   
