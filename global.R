@@ -1,15 +1,17 @@
 # Load necessary libraries
 library(DBI)
 library(RPostgres)
-library(dotenv)
+library(dotenv) # Put this back so it works locally
 
-# 1. Load the .env file into the system environment
-# This reads the .env file and makes the variables available to R
-dotenv::load_dot_env()
+# 1. Conditionally load the .env file
+# If the file exists (on your local computer), load it.
+# If it doesn't exist (on Posit Cloud), skip this step.
+if (file.exists(".env")) {
+  dotenv::load_dot_env()
+}
 
 # 2. Establish the database connection using Sys.getenv()
-# Sys.getenv() safely pulls the string from the environment. 
-# We provide a default fallback (like "MISSING") just in case, to help with debugging.
+# This works perfectly in BOTH environments now!
 con <- DBI::dbConnect(
   drv = RPostgres::Postgres(),
   dbname = Sys.getenv("DB_NAME", unset = "MISSING_DB_NAME"),
@@ -21,5 +23,5 @@ con <- DBI::dbConnect(
 
 # Optional: Test the connection on startup to catch errors early
 if (inherits(con, "try-error")) {
-  stop("Failed to connect to the database. Check your .env file.")
+  stop("Failed to connect to the database. Check your local .env file or Posit Cloud environment variables.")
 }
