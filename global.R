@@ -4,13 +4,17 @@ library(RPostgres)
 library(dotenv)
 library(config)
 
-# 1. Load the .env file into the system environment
-# This reads the .env file and makes the variables available to R
-dotenv::load_dot_env()
+
+
+# 1. Conditionally load the .env file
+# If the file exists (on your local computer), load it.
+# If it doesn't exist (on Posit Cloud), skip this step.
+if (file.exists(".env")) {
+  dotenv::load_dot_env()
+}
 
 # 2. Establish the database connection using Sys.getenv()
-# Sys.getenv() safely pulls the string from the environment. 
-# We provide a default fallback (like "MISSING") just in case, to help with debugging.
+# This works perfectly in BOTH environments now!
 con <- DBI::dbConnect(
   drv = RPostgres::Postgres(),
   dbname = Sys.getenv("DB_NAME", unset = "MISSING_DB_NAME"),
@@ -28,6 +32,17 @@ if (inherits(con, "try-error")) {
 # ============================================================================
 # APP PASSWORD (for login protection)
 # ============================================================================
-# For Posit Connect: set APP_PASSWORD as an environment variable in content settings
-# For local dev: set it in your .Renviron file or hardcode temporarily
-APP_PASSWORD <- Sys.getenv("APP_PASSWORD", unset = "changeme")
+APP_PASSWORD <- Sys.getenv("APP_PASSWORD", unset = "")
+if (APP_PASSWORD == "") {
+  # Fallback: read from project .Renviron manually
+  renviron_path <- file.path(getwd(), ".Renviron")
+  if (file.exists(renviron_path)) {
+    lines <- readLines(renviron_path)
+    for (line in lines) {
+      if (grepl("^APP_PASSWORD=", line)) {
+        APP_PASSWORD <- sub("^APP_PASSWORD=", "", line)
+        break
+      }
+    }
+  }
+}
