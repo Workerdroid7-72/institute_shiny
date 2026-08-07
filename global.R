@@ -2,6 +2,7 @@
 library(DBI)
 library(RPostgres)
 library(dotenv)
+library(config)
 
 # 1. Load the .env file into the system environment
 # This reads the .env file and makes the variables available to R
@@ -23,3 +24,10 @@ con <- DBI::dbConnect(
 if (inherits(con, "try-error")) {
   stop("Failed to connect to the database. Check your .env file.")
 }
+
+# ============================================================================
+# APP PASSWORD (for login protection)
+# ============================================================================
+# For Posit Connect: set APP_PASSWORD as an environment variable in content settings
+# For local dev: set it in your .Renviron file or hardcode temporarily
+APP_PASSWORD <- Sys.getenv("APP_PASSWORD", unset = "changeme")
