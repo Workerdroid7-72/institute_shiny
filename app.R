@@ -11,6 +11,8 @@ source("R/ui_characteristics.R")
 source("R/server_characteristics.R")
 source("R/ui_device_characteristics.R")
 source("R/server_device_characteristics.R")
+source("R/ui_visits.R")
+source("R/server_visits.R")
 
 
 
@@ -68,7 +70,8 @@ dashboard_ui <- bslib::page_navbar(
   ui_overview,
   # NEW: Characteristics tab
   ui_characteristics,
-  ui_device_characteristics
+  ui_device_characteristics,
+  ui_visits
   
 )
 
@@ -84,6 +87,8 @@ dashboard_server <- function(input, output, session) {
   server_characteristics(input, output, session)
   #device tab
   server_device_characteristics(input, output, session)
+  #visits tab
+  server_visits(input, output, session)
   
   
 }

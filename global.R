@@ -5,12 +5,15 @@ library(dotenv)
 
 
 
+
 # 1. Conditionally load the .env file
 # If the file exists (on your local computer), load it.
 # If it doesn't exist (on Posit Cloud), skip this step.
 if (file.exists(".env")) {
   dotenv::load_dot_env()
 }
+
+VISITS_EARLIEST_DATE <- as.Date("2026-08-24")
 
 # 2. Establish the database connection using Sys.getenv()
 # This works perfectly in BOTH environments now!
