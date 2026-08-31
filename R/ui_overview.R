@@ -4,7 +4,7 @@
 
 ui_overview <- bslib::nav_panel(
   title = "Overview",
-  icon = shiny::icon("chart-line"),
+  icon = shiny::icon("gauge-high"),
   
   bslib::layout_column_wrap(
     width = 1 / 6,

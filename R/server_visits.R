@@ -4,7 +4,9 @@
 # Helper: Format Delta as HTML badge
 format_delta_html <- function(delta) {
   if (is.na(delta)) {
-    return(shiny::span("New", style = "font-size: 0.75em; color: #000000; font-weight: bold; text-transform: uppercase;"))
+    return(
+      shiny::span("New", style = "font-size: 0.75em; color: #000000; font-weight: bold; text-transform: uppercase;")
+    )
   }
   
   pct <- round(delta * 100, 1)
@@ -20,11 +22,7 @@ format_delta_html <- function(delta) {
     text <- "0%"
   }
   
-  shiny::span(
-    shiny::icon(icon_name),
-    text,
-    style = "font-size: 0.75em; color: #000000; font-weight: bold;"
-  )
+  shiny::span(shiny::icon(icon_name), text, style = "font-size: 0.75em; color: #000000; font-weight: bold;")
 }
 
 # ==============================================================================
@@ -67,6 +65,7 @@ server_visits <- function(input, output, session) {
   # Load visit summary data for this tab
   # ----------------------------------------------------------------------------
   visit_summary_data <- DBI::dbGetQuery(con, "SELECT * FROM vw_visit_summary;")
+  visit_page_views_data <- DBI::dbGetQuery(con, "SELECT * FROM vw_visit_page_views;")
   
   # ----------------------------------------------------------------------------
   # Track active visits subtab
@@ -115,8 +114,8 @@ server_visits <- function(input, output, session) {
       0
     }
     
-    avg_visit_duration_ms <- if (total_visits > 0) {
-      mean(df$total_time_spent_ms, na.rm = TRUE)
+    median_visit_duration_ms <- if (total_visits > 0) {
+      median(df$total_time_spent_ms, na.rm = TRUE)
     } else {
       0
     }
@@ -126,7 +125,7 @@ server_visits <- function(input, output, session) {
       unique_visitors = unique_visitors,
       avg_visits_per_visitor = avg_visits_per_visitor,
       avg_pages_per_visit = avg_pages_per_visit,
-      avg_visit_duration_ms = avg_visit_duration_ms
+      median_visit_duration_ms = median_visit_duration_ms
     )
   }
   
@@ -216,15 +215,12 @@ server_visits <- function(input, output, session) {
     prev_start <- start_date - period_length
     
     # Filter data for previous period
-    # Note: We don't clamp prev_start to VISITS_EARLIEST_DATE here because 
+    # Note: We don't clamp prev_start to VISITS_EARLIEST_DATE here because
     # we want to know if there was actually data in that specific previous window.
     # If the window is before tracking started, the filter will naturally return 0 rows.
     
     df_prev <- global_filtered_data() %>%
-      dplyr::filter(
-        visit_date >= prev_start,
-        visit_date <= prev_end
-      )
+      dplyr::filter(visit_date >= prev_start, visit_date <= prev_end)
     
     calculate_kpis(df_prev)
   })
@@ -246,9 +242,15 @@ server_visits <- function(input, output, session) {
     list(
       total_visits = calc_delta(curr$total_visits, prev$total_visits),
       unique_visitors = calc_delta(curr$unique_visitors, prev$unique_visitors),
-      avg_visits_per_visitor = calc_delta(curr$avg_visits_per_visitor, prev$avg_visits_per_visitor),
+      avg_visits_per_visitor = calc_delta(
+        curr$avg_visits_per_visitor,
+        prev$avg_visits_per_visitor
+      ),
       avg_pages_per_visit = calc_delta(curr$avg_pages_per_visit, prev$avg_pages_per_visit),
-      avg_visit_duration_ms = calc_delta(curr$avg_visit_duration_ms, prev$avg_visit_duration_ms)
+      median_visit_duration_ms = calc_delta(
+        curr$median_visit_duration_ms,
+        prev$median_visit_duration_ms
+      )
     )
   })
   
@@ -278,18 +280,19 @@ server_visits <- function(input, output, session) {
     )
     
     # 2. Engagement
-    avg_dur <- format_visit_duration_ms(kpis$avg_visit_duration_ms)
+    avg_dur <- format_visit_duration_ms(kpis$median_visit_duration_ms)
     avg_pages <- sprintf("%.1f", kpis$avg_pages_per_visit)
     insights <- c(
       insights,
       paste0(
         "Average engagement was <b>",
         avg_pages,
-        " pages</b> per visit, with an average duration of <b>",
+        " pages</b> per visit, with a median duration of <b>",
         avg_dur,
         "</b>."
       )
     )
+    
     
     # 3. Top Country
     top_country_df <- df %>%
@@ -324,7 +327,46 @@ server_visits <- function(input, output, session) {
       )
     }
     
-    # 5. Context note (addressing your caveat)
+    # 5. Engagement quality
+    engagement_df <- df %>%
+      dplyr::mutate(
+        engagement = dplyr::case_when(
+          page_view_count == 1 ~ "Bounce",
+          page_view_count >= 4 & total_time_spent_ms >= 180000 ~ "Deep Dive",
+          TRUE ~ "Browse"
+        )
+      ) %>%
+      dplyr::count(engagement, name = "n")
+    
+    total_for_pct <- sum(engagement_df$n)
+    
+    if (total_for_pct > 0) {
+      deep_n <- engagement_df$n[engagement_df$engagement == "Deep Dive"]
+      deep_n <- if (length(deep_n) == 0) 0 else deep_n
+      deep_pct <- round(deep_n / total_for_pct * 100)
+      
+      bounce_n <- engagement_df$n[engagement_df$engagement == "Bounce"]
+      bounce_n <- if (length(bounce_n) == 0) 0 else bounce_n
+      bounce_pct <- round(bounce_n / total_for_pct * 100)
+      
+      insights <- c(insights, paste0(
+        "<b>", deep_pct, "%</b> of visits were deep dives, while <b>",
+        bounce_pct, "%</b> were single-page bounces."
+      ))
+    }
+    
+    # 6. Content focus
+    page_df <- filtered_page_views()
+    if (nrow(page_df) > 0) {
+      content_count <- sum(page_df$is_content == TRUE, na.rm = TRUE)
+      content_pct <- round(content_count / nrow(page_df) * 100)
+      
+      insights <- c(insights, paste0(
+        "<b>", content_pct, "%</b> of page views were focused on course content."
+      ))
+    }
+    
+    # 7. Context note (addressing your caveat)
     insights <- c(insights,
                   "<i>Note: Detailed visit tracking began on August 24, 2026.</i>")
     
@@ -367,9 +409,9 @@ server_visits <- function(input, output, session) {
     shiny::div(val, shiny::br(), format_delta_html(delta))
   })
   
-  output$visits_kpi_avg_duration <- shiny::renderUI({
-    val <- format_visit_duration_ms(visit_kpis()$avg_visit_duration_ms)
-    delta <- kpi_deltas()$avg_visit_duration_ms
+  output$visits_kpi_median_duration <- shiny::renderUI({
+    val <- format_visit_duration_ms(visit_kpis()$median_visit_duration_ms)
+    delta <- kpi_deltas()$median_visit_duration_ms
     shiny::div(val, shiny::br(), format_delta_html(delta))
   })
   
@@ -491,14 +533,11 @@ server_visits <- function(input, output, session) {
                          linewidth = 1,
                          group = 1) +
       ggplot2::geom_point(color = "#0d6efd", size = 2.5) +
-      ggplot2::scale_x_date(
-        date_labels = x_date_labels,
-        breaks = if (granularity %in% c("weekly", "monthly")) {
-          unique(plot_data$period)
-        } else {
-          ggplot2::waiver()
-        }
-      ) +
+      ggplot2::scale_x_date(date_labels = x_date_labels, breaks = if (granularity %in% c("weekly", "monthly")) {
+        unique(plot_data$period)
+      } else {
+        ggplot2::waiver()
+      }) +
       ggplot2::scale_y_continuous(
         breaks = function(limits) {
           breaks <- pretty(limits)
@@ -509,7 +548,7 @@ server_visits <- function(input, output, session) {
           int_breaks
         }
       ) +
-      ggplot2::labs(title = "Are visits increasing over time?", x = "Time Interval", y = "Visits") +
+      ggplot2::labs(title = NULL, x = "Time Interval", y = "Visits") +
       ggplot2::theme_minimal() +
       tidyquant::theme_tq() +
       ggplot2::theme(
@@ -581,7 +620,7 @@ server_visits <- function(input, output, session) {
       ggplot2::geom_bar(stat = "identity") +
       ggplot2::coord_flip() +
       ggplot2::labs(
-        title = "Visits by User Type",
+        title = "Who is using the platform?",
         x = "User Type",
         y = "Visits",
         fill = "User Type"
@@ -641,6 +680,136 @@ server_visits <- function(input, output, session) {
       )
     
     plotly::ggplotly(p) %>%
+      plotly::config(displayModeBar = FALSE)
+  })
+  
+  
+  # ----------------------------------------------------------------------------
+  # Engagement Quality: Bounce vs Deep Dive
+  # ----------------------------------------------------------------------------
+  output$visits_engagement_chart <- plotly::renderPlotly({
+    df <- filtered_visit_summary()
+    shiny::req(nrow(df) > 0)
+    
+    # Classify each visit into an engagement tier
+    engagement_data <- df %>%
+      dplyr::mutate(
+        engagement = dplyr::case_when(
+          page_view_count == 1 ~ "Bounce",
+          page_view_count >= 4 &
+            total_time_spent_ms >= 180000 ~ "Deep Dive",
+          TRUE ~ "Browse"
+        )
+      ) %>%
+      dplyr::mutate(engagement = factor(engagement, levels = c("Bounce", "Browse", "Deep Dive"))) %>%
+      dplyr::count(engagement, name = "count", .drop = FALSE)
+    
+    # Donut chart
+    plot_ly(
+      data = engagement_data,
+      labels = ~ engagement,
+      values = ~ count,
+      type = "pie",
+      hole = 0.5,
+      sort = FALSE,
+      textinfo = "label+percent",
+      textposition = "outside",
+      textfont = list(color = "#000000", size = 13),
+      marker = list(colors = c("#d9534f", "#f0ad4e", "#5cb85c")),
+      hovertemplate = "%{label}: %{value} visits (%{percent})<extra></extra>"
+    ) %>%
+      plotly::layout(
+        title = list(text = "<b>How engaged are visits?</b>", font = list(size = 18)),
+        paper_bgcolor = "#e8e8e8",
+        plot_bgcolor = "#e8e8e8",
+        showlegend = FALSE,
+        margin = list(
+          l = 60,
+          r = 60,
+          t = 70,
+          b = 40
+        ),
+        font = list(color = "#000000")
+      ) %>%
+      plotly::config(displayModeBar = FALSE)
+  })
+  
+  # ----------------------------------------------------------------------------
+  # Filtered page views (for content vs non-content analysis)
+  # ----------------------------------------------------------------------------
+  filtered_page_views <- shiny::reactive({
+    shiny::req(visit_page_views_data)
+    
+    df <- visit_page_views_data
+    df$visit_date <- as.Date(df$visit_date)
+    
+    # Date filter
+    start_date <- as.Date(input$visits_date_range[1])
+    end_date <- as.Date(input$visits_date_range[2])
+    shiny::req(start_date, end_date)
+    start_date <- max(start_date, VISITS_EARLIEST_DATE)
+    shiny::req(start_date <= end_date)
+    
+    df <- df %>%
+      dplyr::filter(visit_date >= start_date, visit_date <= end_date)
+    
+    # Global filters
+    filter_is_active <- function(x)
+      ! is.null(x) && nzchar(x) && x != "All"
+    if (filter_is_active(input$filter_country)) {
+      df <- df %>% dplyr::filter(country_name == input$filter_country)
+    }
+    if (filter_is_active(input$filter_region)) {
+      df <- df %>% dplyr::filter(region_name == input$filter_region)
+    }
+    if (filter_is_active(input$filter_user_type)) {
+      df <- df %>% dplyr::filter(user_type == input$filter_user_type)
+    }
+    if (filter_is_active(input$filter_account_mgr)) {
+      df <- df %>% dplyr::filter(account_manager_name == input$filter_account_mgr)
+    }
+    
+    df
+  })
+  
+  # ----------------------------------------------------------------------------
+  # Engagement Quality: Content vs Non-Content
+  # ----------------------------------------------------------------------------
+  output$visits_content_chart <- plotly::renderPlotly({
+    df <- filtered_page_views()
+    shiny::req(nrow(df) > 0)
+    
+    content_data <- df %>%
+      dplyr::mutate(page_type = dplyr::case_when(is_content == TRUE ~ "Course Content", TRUE ~ "Non-Content")) %>%
+      dplyr::mutate(page_type = factor(page_type, levels = c("Course Content", "Non-Content"))) %>%
+      dplyr::count(page_type, name = "count", .drop = FALSE)
+    
+    plot_ly(
+      data = content_data,
+      labels = ~ page_type,
+      values = ~ count,
+      type = "pie",
+      hole = 0.5,
+      sort = FALSE,
+      textinfo = "label+percent",
+      textposition = "outside",
+      textfont = list(color = "#000000", size = 13),
+      marker = list(colors = c("#5cb85c", "#adb5bd")),
+      hovertemplate = "%{label}: %{value} page views (%{percent})<extra></extra>"
+    ) %>%
+      plotly::layout(
+        title = list(text = "<b>Is activity focused on course content?</b>", font = list(size = 18)),
+        paper_bgcolor = "#e8e8e8",
+        plot_bgcolor = "#e8e8e8",
+        showlegend = FALSE,
+        margin = list(
+          l = 60,
+          r = 60,
+          t = 70,
+          b = 40
+        ),
+        font = list(color = "#000000")
+      ) %>%
       plotly::config(displayModeBar = FALSE)
   })
 }

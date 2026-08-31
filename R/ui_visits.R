@@ -84,16 +84,11 @@ ui_visits <- bslib::nav_panel(
         class = "mt-3",
         bslib::card(
           style = "background-color: rgba(13, 110, 253, 0.07); border: 1px solid rgba(13, 110, 253, 0.3);",
-          bslib::card_header(
-            style = "background-color: rgba(13, 110, 253, 0.15); border-bottom: 1px solid rgba(13, 110, 253, 0.3);",
-            shiny::div(
-              shiny::icon("lightbulb", style = "color: #ffc107; margin-right: 8px;"),
-              shiny::strong("Key Insights")
-            )
-          ),
-          bslib::card_body(
-            shiny::htmlOutput("visits_insight_summary")
-          )
+          bslib::card_header(style = "background-color: rgba(13, 110, 253, 0.15); border-bottom: 1px solid rgba(13, 110, 253, 0.3);", shiny::div(
+            shiny::icon("lightbulb", style = "color: #ffc107; margin-right: 8px;"),
+            shiny::strong("Key Insights")
+          )),
+          bslib::card_body(shiny::htmlOutput("visits_insight_summary"))
         )
       ),
       
@@ -103,21 +98,64 @@ ui_visits <- bslib::nav_panel(
       shiny::div(
         class = "mt-3",
         bslib::layout_column_wrap(
-          width = 1/5,
-          visits_kpi_box("Total Visits", shiny::uiOutput("visits_kpi_total_visits"), "chart-line", theme = "primary"),
-          visits_kpi_box("Unique Visitors", shiny::uiOutput("visits_kpi_unique_visitors"), "users", theme = "success"),
-          visits_kpi_box("Visits per Visitor", shiny::uiOutput("visits_kpi_visits_per_visitor"), "repeat", theme = "info"),
-          visits_kpi_box("Pages per Visit", shiny::uiOutput("visits_kpi_pages_per_visit"), "layer-group", theme = "warning"),
-          visits_kpi_box("Avg Visit Duration", shiny::uiOutput("visits_kpi_avg_duration"), "clock", theme = "danger")
+          width = 1 / 5,
+          visits_kpi_box(
+            "Total Visits",
+            shiny::uiOutput("visits_kpi_total_visits"),
+            "chart-line",
+            theme = "primary"
+          ),
+          visits_kpi_box(
+            "Unique Visitors",
+            shiny::uiOutput("visits_kpi_unique_visitors"),
+            "users",
+            theme = "success"
+          ),
+          visits_kpi_box(
+            "Visits per Visitor",
+            shiny::uiOutput("visits_kpi_visits_per_visitor"),
+            "repeat",
+            theme = "info"
+          ),
+          visits_kpi_box(
+            "Pages per Visit",
+            shiny::uiOutput("visits_kpi_pages_per_visit"),
+            "layer-group",
+            theme = "warning"
+          ),
+          visits_kpi_box(
+            "Median Visit Duration",
+            shiny::uiOutput("visits_kpi_median_duration"),
+            "clock",
+            theme = "danger"
+          )
         )
       ),
       
       # ------------------------------------------------------------------------
-      # 2) MAIN TREND AREA
+      # ENGAGEMENT QUALITY
+      # ------------------------------------------------------------------------
+      shiny::div(
+        class = "mt-4",
+        shiny::h5(shiny::strong("Engagement Quality"), style = "margin-bottom: 2px;"),
+        shiny::p("How meaningful are the visits to the platform?", style = "color: #adb5bd; font-size: 0.9em; margin-bottom: 12px;"),
+        bslib::layout_column_wrap(
+          width = 1 / 2,
+          bslib::card(bslib::card_body(
+            plotly::plotlyOutput("visits_engagement_chart", height = "340px")
+          )),
+          bslib::card(bslib::card_body(
+            plotly::plotlyOutput("visits_content_chart", height = "340px")
+          ))
+        )
+      ),
+      
+      # ------------------------------------------------------------------------
+      # 3) MAIN TREND AREA
       # ------------------------------------------------------------------------
       
       shiny::div(class = "mt-4", bslib::card(
-        bslib::card_header("Usage Trend"),
+        bslib::card_header("Is usage growing?"),
         bslib::card_body(
           shiny::div(
             class = "mb-3",
@@ -139,36 +177,31 @@ ui_visits <- bslib::nav_panel(
       )),
       
       # ------------------------------------------------------------------------
-      # 3) BREAKDOWN AREA
+      # 4) BREAKDOWN AREA
       # ------------------------------------------------------------------------
       shiny::div(
         class = "mt-4",
         bslib::layout_column_wrap(
-          width = 1/2,
+          width = 1 / 2,
           
-          bslib::card(
-            bslib::card_body(
-              plotly::plotlyOutput("visits_country_chart", height = "320px")
-            )
-          ),
+          bslib::card(bslib::card_body(
+            plotly::plotlyOutput("visits_country_chart", height = "320px")
+          )),
           
-          bslib::card(
-            bslib::card_body(
-              plotly::plotlyOutput("visits_user_type_chart", height = "320px")
-            )
-          )
+          bslib::card(bslib::card_body(
+            plotly::plotlyOutput("visits_user_type_chart", height = "320px")
+          ))
         )
       ),
       
-      shiny::div(
-        class = "mt-4",
-        bslib::card(
-          bslib::card_body(
-            plotly::plotlyOutput("visits_language_chart", height = "350px")
-          )
+      shiny::div(class = "mt-4", bslib::card(
+        bslib::card_body(
+          plotly::plotlyOutput("visits_language_chart", height = "350px")
         )
-      )
+      ))
     ),
+    
+    
     
     # ==========================================================================
     # SUBTAB 2: PAGES & CONTENT
