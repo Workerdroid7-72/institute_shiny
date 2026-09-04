@@ -153,23 +153,39 @@ ui_visits <- bslib::nav_panel(
       # ------------------------------------------------------------------------
       # 3) MAIN TREND AREA
       # ------------------------------------------------------------------------
-      
+      # ------------------------------------------------------------------------
+      # 3) MAIN TREND AREA
+      # ------------------------------------------------------------------------
       shiny::div(class = "mt-4", bslib::card(
-        bslib::card_header("Is usage growing?"),
+        bslib::card_header(shiny::textOutput("visits_trend_title", inline = TRUE)),
         bslib::card_body(
           shiny::div(
             class = "mb-3",
-            style = "max-width: 220px;",
-            shiny::selectInput(
-              inputId = "visits_trend_granularity",
-              label = "Trend granularity",
+            shiny::radioButtons(
+              inputId = "visits_trend_metric",
+              label = "Metric",
               choices = c(
-                "Daily" = "daily",
-                "Weekly" = "weekly",
-                "Monthly" = "monthly"
+                "Visits" = "visits",
+                "Unique Visitors" = "unique_visitors",
+                "Pages per Visit" = "pages_per_visit",
+                "Median Duration" = "median_duration"
               ),
-              selected = "weekly",
-              selectize = FALSE
+              selected = "visits",
+              inline = TRUE
+            ),
+            shiny::div(
+              style = "max-width: 220px;",
+              shiny::selectInput(
+                inputId = "visits_trend_granularity",
+                label = "Trend granularity",
+                choices = c(
+                  "Daily" = "daily",
+                  "Weekly" = "weekly",
+                  "Monthly" = "monthly"
+                ),
+                selected = "daily",
+                selectize = FALSE
+              )
             )
           ),
           plotly::plotlyOutput("visits_usage_trend_plot", height = "350px")

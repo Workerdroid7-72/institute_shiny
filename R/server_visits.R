@@ -332,7 +332,8 @@ server_visits <- function(input, output, session) {
       dplyr::mutate(
         engagement = dplyr::case_when(
           page_view_count == 1 ~ "Bounce",
-          page_view_count >= 4 & total_time_spent_ms >= 180000 ~ "Deep Dive",
+          page_view_count >= 4 &
+            total_time_spent_ms >= 180000 ~ "Deep Dive",
           TRUE ~ "Browse"
         )
       ) %>%
@@ -342,17 +343,29 @@ server_visits <- function(input, output, session) {
     
     if (total_for_pct > 0) {
       deep_n <- engagement_df$n[engagement_df$engagement == "Deep Dive"]
-      deep_n <- if (length(deep_n) == 0) 0 else deep_n
+      deep_n <- if (length(deep_n) == 0)
+        0
+      else
+        deep_n
       deep_pct <- round(deep_n / total_for_pct * 100)
       
       bounce_n <- engagement_df$n[engagement_df$engagement == "Bounce"]
-      bounce_n <- if (length(bounce_n) == 0) 0 else bounce_n
+      bounce_n <- if (length(bounce_n) == 0)
+        0
+      else
+        bounce_n
       bounce_pct <- round(bounce_n / total_for_pct * 100)
       
-      insights <- c(insights, paste0(
-        "<b>", deep_pct, "%</b> of visits were deep dives, while <b>",
-        bounce_pct, "%</b> were single-page bounces."
-      ))
+      insights <- c(
+        insights,
+        paste0(
+          "<b>",
+          deep_pct,
+          "%</b> of visits were deep dives, while <b>",
+          bounce_pct,
+          "%</b> were single-page bounces."
+        )
+      )
     }
     
     # 6. Content focus
@@ -361,9 +374,14 @@ server_visits <- function(input, output, session) {
       content_count <- sum(page_df$is_content == TRUE, na.rm = TRUE)
       content_pct <- round(content_count / nrow(page_df) * 100)
       
-      insights <- c(insights, paste0(
-        "<b>", content_pct, "%</b> of page views were focused on course content."
-      ))
+      insights <- c(
+        insights,
+        paste0(
+          "<b>",
+          content_pct,
+          "%</b> of page views were focused on course content."
+        )
+      )
     }
     
     # 7. Context note (addressing your caveat)
@@ -436,7 +454,7 @@ server_visits <- function(input, output, session) {
       input$visits_date_preset,
       "all_dates" = "monthly",
       "last_7" = "daily",
-      "last_30" = "weekly",
+      "last_30" = "daily",
       "last_90" = "weekly",
       "custom" = NULL
     )
@@ -460,66 +478,123 @@ server_visits <- function(input, output, session) {
   }, ignoreInit = TRUE)
   
   # ----------------------------------------------------------------------------
-  # Real Usage Trend chart
+  # Trend chart: dynamic section title
+  # ----------------------------------------------------------------------------
+  output$visits_trend_title <- shiny::renderText({
+    metric <- input$visits_trend_metric
+    if (is.null(metric)) metric <- "visits"
+    
+    switch(metric,
+           "visits" = "Is usage growing?",
+           "unique_visitors" = "Is our audience growing?",
+           "pages_per_visit" = "Are visits getting deeper?",
+           "median_duration" = "Are users staying longer?"
+    )
+  })
+  
+  # ----------------------------------------------------------------------------
+  # Trend chart: dynamic section title
+  # ----------------------------------------------------------------------------
+  output$visits_trend_title <- shiny::renderText({
+    metric <- input$visits_trend_metric
+    if (is.null(metric))
+      metric <- "visits"
+    
+    switch(
+      metric,
+      "visits" = "Is usage growing?",
+      "unique_visitors" = "Is our audience growing?",
+      "pages_per_visit" = "Are visits getting deeper?",
+      "median_duration" = "Are users staying longer?"
+    )
+  })
+  
+  # ----------------------------------------------------------------------------
+  # Real Usage Trend chart (metric-aware)
   # ----------------------------------------------------------------------------
   output$visits_usage_trend_plot <- plotly::renderPlotly({
-    # Get inputs
+    
     granularity <- input$visits_trend_granularity
+    metric <- input$visits_trend_metric
     start_date <- input$visits_date_range[1]
     end_date <- input$visits_date_range[2]
     
-    shiny::req(start_date, end_date, granularity)
+    shiny::req(start_date, end_date, granularity, metric)
     
-    # Clean dates
     start_date <- max(as.Date(start_date), VISITS_EARLIEST_DATE)
     end_date <- as.Date(end_date)
-    
     shiny::req(start_date <= end_date)
     
-    # Get filtered visit-level data
     df <- filtered_visit_summary()
     df$visit_date <- as.Date(df$visit_date)
     
-    # Assign aggregation period and create a full period grid
+    # Assign aggregation period based on granularity
     if (granularity == "daily") {
       df$period <- df$visit_date
-      
       grid <- data.frame(period = seq.Date(start_date, end_date, by = "day"))
-      
     } else if (granularity == "weekly") {
-      # Week starts Monday
       df$period <- df$visit_date - (as.integer(format(df$visit_date, "%u")) - 1)
-      
       grid_start <- start_date - (as.integer(format(start_date, "%u")) - 1)
       grid_end <- end_date - (as.integer(format(end_date, "%u")) - 1)
-      
       grid <- data.frame(period = seq.Date(grid_start, grid_end, by = "week"))
-      
     } else {
-      # Month starts on the 1st
       df$period <- as.Date(format(df$visit_date, "%Y-%m-01"))
-      
       grid_start <- as.Date(format(start_date, "%Y-%m-01"))
       grid_end <- as.Date(format(end_date, "%Y-%m-01"))
-      
       grid <- data.frame(period = seq.Date(grid_start, grid_end, by = "month"))
     }
     
-    # Count visits per period
-    summary_data <- df %>%
-      dplyr::group_by(period) %>%
-      dplyr::summarise(visits = dplyr::n(), .groups = "drop")
+    # Aggregate based on selected metric
+    summary_data <- switch(metric,
+                           "visits" = df %>%
+                             dplyr::group_by(period) %>%
+                             dplyr::summarise(value = dplyr::n(), .groups = "drop"),
+                           "unique_visitors" = df %>%
+                             dplyr::group_by(period) %>%
+                             dplyr::summarise(value = dplyr::n_distinct(user_id), .groups = "drop"),
+                           "pages_per_visit" = df %>%
+                             dplyr::group_by(period) %>%
+                             dplyr::summarise(value = mean(page_view_count, na.rm = TRUE), .groups = "drop"),
+                           "median_duration" = df %>%
+                             dplyr::group_by(period) %>%
+                             dplyr::summarise(value = median(total_time_spent_ms, na.rm = TRUE) / 60000, .groups = "drop")
+    )
     
-    # Join onto full grid so missing periods become 0
-    plot_data <- grid %>%
-      dplyr::left_join(summary_data, by = "period") %>%
-      dplyr::mutate(visits = dplyr::coalesce(visits, 0L)) %>%
-      dplyr::arrange(period)
+    # Join onto the full period grid.
+    # For count metrics, empty periods = 0. For average metrics, leave as NA (gap).
+    if (metric %in% c("visits", "unique_visitors")) {
+      plot_data <- grid %>%
+        dplyr::left_join(summary_data, by = "period") %>%
+        dplyr::mutate(value = dplyr::coalesce(value, 0)) %>%
+        dplyr::arrange(period)
+    } else {
+      plot_data <- grid %>%
+        dplyr::left_join(summary_data, by = "period") %>%
+        dplyr::arrange(period)
+    }
     
-    # Ensure period is Date
-    plot_data$period <- as.Date(plot_data$period)
+    # Weekend shading bands (daily granularity only)
+    weekend_bands <- NULL
+    if (granularity == "daily") {
+      all_dates <- seq.Date(start_date, end_date, by = "day")
+      wday_num <- as.integer(format(all_dates, "%u"))   # 1 = Mon ... 6 = Sat, 7 = Sun
+      weekend_dates <- all_dates[wday_num %in% c(6, 7)]
+      if (length(weekend_dates) > 0) {
+        # Finite y-bounds from the data (ggplotly handles these reliably)
+        y_vals <- plot_data$value[!is.na(plot_data$value)]
+        y_lo <- if (length(y_vals) > 0) min(y_vals) else 0
+        y_hi <- if (length(y_vals) > 0) max(y_vals) else 1
+        
+        weekend_bands <- data.frame(
+          xmin = weekend_dates,
+          xmax = weekend_dates + 1,
+          ymin = y_lo,
+          ymax = y_hi
+        )
+      }
+    }
     
-    # Choose x-axis date labels by granularity
+    # Axis labels
     x_date_labels <- switch(
       granularity,
       "daily" = "%d %b",
@@ -527,28 +602,54 @@ server_visits <- function(input, output, session) {
       "monthly" = "%b %Y"
     )
     
-    # Build chart using ggplot2 for consistency with other tabs
-    p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = period, y = visits)) +
-      ggplot2::geom_line(color = "#0d6efd",
-                         linewidth = 1,
-                         group = 1) +
+    y_label <- switch(metric,
+                      "visits" = "Visits",
+                      "unique_visitors" = "Unique Visitors",
+                      "pages_per_visit" = "Pages per Visit",
+                      "median_duration" = "Median Duration (minutes)"
+    )
+    
+    # Y-axis breaks: whole numbers for counts, auto for averages
+    y_breaks <- if (metric %in% c("visits", "unique_visitors")) {
+      function(limits) {
+        breaks <- pretty(limits)
+        int_breaks <- unique(round(breaks))
+        if (length(int_breaks) < 2) {
+          int_breaks <- seq(floor(limits[1]), ceiling(limits[2]))
+        }
+        int_breaks
+      }
+    } else {
+      ggplot2::waiver()
+    }
+    
+    # Build chart
+    p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = period, y = value))
+    
+    # Add subtle weekend shading (daily only)
+    if (!is.null(weekend_bands)) {
+      p <- p + ggplot2::geom_rect(
+        data = weekend_bands,
+        ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+        fill = "#9e9e9e",
+        alpha = 0.5,
+        inherit.aes = FALSE
+      )
+    }
+    
+    p <- p +
+      ggplot2::geom_line(color = "#0d6efd", linewidth = 1, group = 1) +
       ggplot2::geom_point(color = "#0d6efd", size = 2.5) +
-      ggplot2::scale_x_date(date_labels = x_date_labels, breaks = if (granularity %in% c("weekly", "monthly")) {
-        unique(plot_data$period)
-      } else {
-        ggplot2::waiver()
-      }) +
-      ggplot2::scale_y_continuous(
-        breaks = function(limits) {
-          breaks <- pretty(limits)
-          int_breaks <- unique(round(breaks))
-          if (length(int_breaks) < 2) {
-            int_breaks <- seq(floor(limits[1]), ceiling(limits[2]))
-          }
-          int_breaks
+      ggplot2::scale_x_date(
+        date_labels = x_date_labels,
+        breaks = if (granularity %in% c("weekly", "monthly")) {
+          unique(plot_data$period)
+        } else {
+          ggplot2::waiver()
         }
       ) +
-      ggplot2::labs(title = NULL, x = "Time Interval", y = "Visits") +
+      ggplot2::scale_y_continuous(breaks = y_breaks) +
+      ggplot2::labs(title = NULL, x = "Time Interval", y = y_label) +
       ggplot2::theme_minimal() +
       tidyquant::theme_tq() +
       ggplot2::theme(
