@@ -1,16 +1,18 @@
 # R/server_visits.R
 
 # Helper: Format Delta as HTML badge
-# Helper: Format Delta as HTML badge
 format_delta_html <- function(delta) {
   if (is.na(delta)) {
     return(
-      shiny::span("New", style = "font-size: 0.75em; color: #000000; font-weight: bold; text-transform: uppercase;")
+      shiny::span(
+        "New",
+        style = "font-size: 0.75em; color: #000000; font-weight: bold; text-transform: uppercase;"
+      )
     )
   }
-  
+
   pct <- round(delta * 100, 1)
-  
+
   if (delta > 0) {
     icon_name <- "arrow-up"
     text <- paste0("+", pct, "%")
@@ -21,8 +23,12 @@ format_delta_html <- function(delta) {
     icon_name <- "minus"
     text <- "0%"
   }
-  
-  shiny::span(shiny::icon(icon_name), text, style = "font-size: 0.75em; color: #000000; font-weight: bold;")
+
+  shiny::span(
+    shiny::icon(icon_name),
+    text,
+    style = "font-size: 0.75em; color: #000000; font-weight: bold;"
+  )
 }
 
 # ==============================================================================
@@ -32,16 +38,16 @@ format_visit_duration_ms <- function(ms) {
   if (is.null(ms) || length(ms) == 0 || is.na(ms) || ms == 0) {
     return("0s")
   }
-  
+
   total_seconds <- round(ms / 1000)
-  
+
   if (total_seconds < 60) {
     return(paste0(total_seconds, "s"))
   }
-  
+
   minutes <- floor(total_seconds / 60)
   seconds <- total_seconds %% 60
-  
+
   if (minutes < 60) {
     if (seconds > 0) {
       return(paste0(minutes, "m ", seconds, "s"))
@@ -49,11 +55,112 @@ format_visit_duration_ms <- function(ms) {
       return(paste0(minutes, "m"))
     }
   }
-  
+
   hours <- floor(minutes / 60)
   minutes <- minutes %% 60
-  
+
   paste0(hours, "h ", minutes, "m")
+}
+
+# ==============================================================================
+# HELPER: Clean raw page paths into readable labels and categories
+# ==============================================================================
+
+clean_page_paths <- function(raw_paths) {
+  clean <- sub("^/?logged/", "", raw_paths)
+  clean <- sub("^/", "", clean)
+
+  category <- dplyr::case_when(
+    grepl("^learning/section/", clean) & grepl("-test$", clean) ~ "Assessment",
+    grepl("^learning/section/", clean) ~ "Core Learning",
+    grepl("^learning/elective/", clean) ~ "Elective Learning",
+    grepl("^learning/module-complete/", clean) ~ "Completion",
+    grepl("^learning/core-complete/", clean) ~ "Completion",
+    grepl("^dashboard/admin/", clean) ~ "Admin pages",
+    grepl("^dashboard/regional/", clean) ~ "Regional Admin",
+    grepl("^dashboard/owner/", clean) ~ "Owner Admin",
+    grepl("^dashboard/stockist/", clean) ~ "Record Detail",
+    grepl("^dashboard/person/", clean) ~ "Record Detail",
+    TRUE ~ "Functional / Admin"
+  )
+
+  label <- sapply(
+    clean,
+    function(p) {
+      if (is.na(p) || p == "") {
+        return("Unknown")
+      }
+
+      if (grepl("^learning/section/", p)) {
+        slug <- sub("^learning/section/", "", p)
+        if (grepl("-test$", slug)) {
+          # Assessment page: drop the "-test" suffix, prefix with "Assessment:"
+          name <- sub("-test$", "", slug)
+          paste0("Assessment: ", tools::toTitleCase(gsub("-", " ", name)))
+        } else {
+          paste0("Section: ", tools::toTitleCase(gsub("-", " ", slug)))
+        }
+      } else if (grepl("^learning/elective/", p)) {
+        parts <- strsplit(p, "/")[[1]]
+        slug <- parts[length(parts)]
+        paste0("Elective: ", tools::toTitleCase(gsub("-", " ", slug)))
+      } else if (grepl("^learning/module-complete/", p)) {
+        slug <- sub("^learning/module-complete/", "", p)
+        paste0("Completed: ", tools::toTitleCase(gsub("-", " ", slug)))
+      } else if (grepl("^learning/core-complete/", p)) {
+        slug <- sub("^learning/core-complete/", "", p)
+        paste0("Completed: Core Level ", slug)
+      } else if (grepl("^dashboard/admin/", p)) {
+        slug <- sub("^dashboard/admin/", "", p)
+        paste0("Admin: ", tools::toTitleCase(gsub("[-_]", " ", slug)))
+      } else if (grepl("^dashboard/regional/", p)) {
+        slug <- sub("^dashboard/regional/", "", p)
+        paste0("Regional Admin: ", tools::toTitleCase(gsub("[-_]", " ", slug)))
+      } else if (grepl("^dashboard/owner/", p)) {
+        slug <- sub("^dashboard/owner/", "", p)
+        paste0("Owner Admin: ", tools::toTitleCase(gsub("[-_]", " ", slug)))
+      } else if (grepl("^dashboard/stockist/", p)) {
+        "Stockist record detail"
+      } else if (grepl("^dashboard/person/", p)) {
+        "Person record detail"
+      } else {
+        parts <- strsplit(p, "/")[[1]]
+        slug <- parts[1]
+        tools::toTitleCase(gsub("[-_]", " ", slug))
+      }
+    },
+    USE.NAMES = FALSE
+  )
+
+  data.frame(
+    clean_label = label,
+    page_category = category,
+    stringsAsFactors = FALSE
+  )
+}
+
+# ==============================================================================
+# Helper: Count the first ("entry") or last ("exit") page of each visit
+# ==============================================================================
+boundary_page_counts <- function(df, type) {
+  cleaned <- clean_page_paths(df$page_path)
+  df$clean_label <- cleaned$clean_label
+
+  boundary <- if (type == "entry") {
+    df %>%
+      dplyr::group_by(visit_id) %>%
+      dplyr::slice_min(order_by = created_at, n = 1, with_ties = FALSE)
+  } else {
+    df %>%
+      dplyr::group_by(visit_id) %>%
+      dplyr::slice_max(order_by = created_at, n = 1, with_ties = FALSE)
+  }
+
+  boundary %>%
+    dplyr::ungroup() %>%
+    dplyr::count(clean_label, name = "visits") %>%
+    dplyr::arrange(dplyr::desc(visits)) %>%
+    head(10)
 }
 
 
@@ -65,8 +172,11 @@ server_visits <- function(input, output, session) {
   # Load visit summary data for this tab
   # ----------------------------------------------------------------------------
   visit_summary_data <- DBI::dbGetQuery(con, "SELECT * FROM vw_visit_summary;")
-  visit_page_views_data <- DBI::dbGetQuery(con, "SELECT * FROM vw_visit_page_views;")
-  
+  visit_page_views_data <- DBI::dbGetQuery(
+    con,
+    "SELECT * FROM vw_visit_page_views;"
+  )
+
   # ----------------------------------------------------------------------------
   # Track active visits subtab
   # ----------------------------------------------------------------------------
@@ -77,7 +187,7 @@ server_visits <- function(input, output, session) {
       input$visits_subtabs
     }
   })
-  
+
   # ----------------------------------------------------------------------------
   # Centralised current filter state
   # ----------------------------------------------------------------------------
@@ -94,32 +204,32 @@ server_visits <- function(input, output, session) {
       visits_subtab = input$visits_subtabs
     )
   })
-  
+
   # ----------------------------------------------------------------------------
   # Helper: Calculate KPIs from a dataframe
   # ----------------------------------------------------------------------------
   calculate_kpis <- function(df) {
     total_visits <- nrow(df)
     unique_visitors <- dplyr::n_distinct(df$user_id, na.rm = TRUE)
-    
+
     avg_visits_per_visitor <- if (unique_visitors > 0) {
       total_visits / unique_visitors
     } else {
       0
     }
-    
+
     avg_pages_per_visit <- if (total_visits > 0) {
       mean(df$page_view_count, na.rm = TRUE)
     } else {
       0
     }
-    
+
     median_visit_duration_ms <- if (total_visits > 0) {
       median(df$total_time_spent_ms, na.rm = TRUE)
     } else {
       0
     }
-    
+
     list(
       total_visits = total_visits,
       unique_visitors = unique_visitors,
@@ -128,75 +238,76 @@ server_visits <- function(input, output, session) {
       median_visit_duration_ms = median_visit_duration_ms
     )
   }
-  
+
   # ----------------------------------------------------------------------------
   # Reactive: Data filtered by GLOBAL filters only (no dates yet)
   # ----------------------------------------------------------------------------
   global_filtered_data <- shiny::reactive({
     shiny::req(visit_summary_data)
-    
+
     df <- visit_summary_data
-    
+
     # Ensure types are correct
     df$visit_date <- as.Date(df$visit_date)
     df$page_view_count <- as.numeric(df$page_view_count)
     df$total_time_spent_ms <- as.numeric(df$total_time_spent_ms)
-    
+
     # Helper to decide whether a global filter is active
     filter_is_active <- function(x) {
       !is.null(x) && nzchar(x) && x != "All"
     }
-    
+
     # Apply global filters
     if (filter_is_active(input$filter_country)) {
       df <- df %>% dplyr::filter(country_name == input$filter_country)
     }
-    
+
     if (filter_is_active(input$filter_region)) {
       df <- df %>% dplyr::filter(region_name == input$filter_region)
     }
-    
+
     if (filter_is_active(input$filter_user_type)) {
       df <- df %>% dplyr::filter(user_type == input$filter_user_type)
     }
-    
+
     if (filter_is_active(input$filter_account_mgr)) {
-      df <- df %>% dplyr::filter(account_manager_name == input$filter_account_mgr)
+      df <- df %>%
+        dplyr::filter(account_manager_name == input$filter_account_mgr)
     }
-    
+
     df
   })
-  
+
   # ----------------------------------------------------------------------------
   # Reactive: Current Period Data
   # ----------------------------------------------------------------------------
   filtered_visit_summary <- shiny::reactive({
     df <- global_filtered_data()
-    
+
     # Get selected dates
     start_date <- as.Date(input$visits_date_range[1])
     end_date <- as.Date(input$visits_date_range[2])
-    
+
     shiny::req(start_date, end_date)
-    
+
     # Clamp to earliest tracking date
     start_date <- max(start_date, VISITS_EARLIEST_DATE)
-    
+
     # Validate date range
     shiny::req(start_date <= end_date)
-    
+
     # Date filter
     df %>%
       dplyr::filter(visit_date >= start_date, visit_date <= end_date)
   })
-  
+
   # ----------------------------------------------------------------------------
   # KPI calculations (Current Period)
   # ----------------------------------------------------------------------------
   visit_kpis <- shiny::reactive({
     calculate_kpis(filtered_visit_summary())
   })
-  
+
   # ----------------------------------------------------------------------------
   # Reactive: Previous Period KPIs
   # ----------------------------------------------------------------------------
@@ -204,41 +315,41 @@ server_visits <- function(input, output, session) {
     # Get current selected dates
     start_date <- as.Date(input$visits_date_range[1])
     end_date <- as.Date(input$visits_date_range[2])
-    
+
     shiny::req(start_date, end_date)
-    
+
     # Calculate duration of current period (in days)
     period_length <- as.numeric(end_date - start_date) + 1
-    
+
     # Define previous period range
     prev_end <- start_date - 1
     prev_start <- start_date - period_length
-    
+
     # Filter data for previous period
     # Note: We don't clamp prev_start to VISITS_EARLIEST_DATE here because
     # we want to know if there was actually data in that specific previous window.
     # If the window is before tracking started, the filter will naturally return 0 rows.
-    
+
     df_prev <- global_filtered_data() %>%
       dplyr::filter(visit_date >= prev_start, visit_date <= prev_end)
-    
+
     calculate_kpis(df_prev)
   })
-  
+
   # ----------------------------------------------------------------------------
   # Reactive: KPI Deltas (Percentage Change)
   # ----------------------------------------------------------------------------
   kpi_deltas <- shiny::reactive({
     curr <- visit_kpis()
     prev <- previous_visit_kpis()
-    
+
     calc_delta <- function(current, previous) {
       if (is.null(previous) || previous == 0) {
         return(NA) # Cannot calculate % change from 0
       }
       (current - previous) / previous
     }
-    
+
     list(
       total_visits = calc_delta(curr$total_visits, prev$total_visits),
       unique_visitors = calc_delta(curr$unique_visitors, prev$unique_visitors),
@@ -246,25 +357,28 @@ server_visits <- function(input, output, session) {
         curr$avg_visits_per_visitor,
         prev$avg_visits_per_visitor
       ),
-      avg_pages_per_visit = calc_delta(curr$avg_pages_per_visit, prev$avg_pages_per_visit),
+      avg_pages_per_visit = calc_delta(
+        curr$avg_pages_per_visit,
+        prev$avg_pages_per_visit
+      ),
       median_visit_duration_ms = calc_delta(
         curr$median_visit_duration_ms,
         prev$median_visit_duration_ms
       )
     )
   })
-  
+
   # ----------------------------------------------------------------------------
   # Insight Summary Text Generation
   # ----------------------------------------------------------------------------
   visit_insights_text <- shiny::reactive({
     df <- filtered_visit_summary()
     kpis <- visit_kpis()
-    
+
     shiny::req(nrow(df) > 0)
-    
+
     insights <- character(0)
-    
+
     # 1. Volume
     total_v <- format(kpis$total_visits, big.mark = ",")
     unique_u <- format(kpis$unique_visitors, big.mark = ",")
@@ -278,7 +392,7 @@ server_visits <- function(input, output, session) {
         " unique users</b> in the selected period."
       )
     )
-    
+
     # 2. Engagement
     avg_dur <- format_visit_duration_ms(kpis$median_visit_duration_ms)
     avg_pages <- sprintf("%.1f", kpis$avg_pages_per_visit)
@@ -292,15 +406,16 @@ server_visits <- function(input, output, session) {
         "</b>."
       )
     )
-    
-    
+
     # 3. Top Country
     top_country_df <- df %>%
       dplyr::count(country_name, name = "n") %>%
       dplyr::slice_max(n, n = 1, with_ties = FALSE)
-    
-    if (nrow(top_country_df) > 0 &&
-        !is.na(top_country_df$country_name[1])) {
+
+    if (
+      nrow(top_country_df) > 0 &&
+        !is.na(top_country_df$country_name[1])
+    ) {
       insights <- c(
         insights,
         paste0(
@@ -310,12 +425,12 @@ server_visits <- function(input, output, session) {
         )
       )
     }
-    
+
     # 4. Top Language
     top_lang_df <- df %>%
       dplyr::count(language, name = "n") %>%
       dplyr::slice_max(n, n = 1, with_ties = FALSE)
-    
+
     if (nrow(top_lang_df) > 0 && !is.na(top_lang_df$language[1])) {
       insights <- c(
         insights,
@@ -326,7 +441,7 @@ server_visits <- function(input, output, session) {
         )
       )
     }
-    
+
     # 5. Engagement quality
     engagement_df <- df %>%
       dplyr::mutate(
@@ -338,24 +453,26 @@ server_visits <- function(input, output, session) {
         )
       ) %>%
       dplyr::count(engagement, name = "n")
-    
+
     total_for_pct <- sum(engagement_df$n)
-    
+
     if (total_for_pct > 0) {
       deep_n <- engagement_df$n[engagement_df$engagement == "Deep Dive"]
-      deep_n <- if (length(deep_n) == 0)
+      deep_n <- if (length(deep_n) == 0) {
         0
-      else
+      } else {
         deep_n
+      }
       deep_pct <- round(deep_n / total_for_pct * 100)
-      
+
       bounce_n <- engagement_df$n[engagement_df$engagement == "Bounce"]
-      bounce_n <- if (length(bounce_n) == 0)
+      bounce_n <- if (length(bounce_n) == 0) {
         0
-      else
+      } else {
         bounce_n
+      }
       bounce_pct <- round(bounce_n / total_for_pct * 100)
-      
+
       insights <- c(
         insights,
         paste0(
@@ -367,13 +484,13 @@ server_visits <- function(input, output, session) {
         )
       )
     }
-    
+
     # 6. Content focus
     page_df <- filtered_page_views()
     if (nrow(page_df) > 0) {
       content_count <- sum(page_df$is_content == TRUE, na.rm = TRUE)
       content_pct <- round(content_count / nrow(page_df) * 100)
-      
+
       insights <- c(
         insights,
         paste0(
@@ -383,11 +500,13 @@ server_visits <- function(input, output, session) {
         )
       )
     }
-    
+
     # 7. Context note (addressing your caveat)
-    insights <- c(insights,
-                  "<i>Note: Detailed visit tracking began on August 24, 2026.</i>")
-    
+    insights <- c(
+      insights,
+      "<i>Note: Detailed visit tracking began on August 24, 2026.</i>"
+    )
+
     # Combine into an HTML list
     paste0(
       "<ul style='margin-bottom: 0; padding-left: 20px;'><li>",
@@ -395,11 +514,11 @@ server_visits <- function(input, output, session) {
       "</li></ul>"
     )
   })
-  
+
   output$visits_insight_summary <- shiny::renderUI({
     shiny::HTML(visit_insights_text())
   })
-  
+
   # ----------------------------------------------------------------------------
   # KPI outputs (with Deltas)
   # ----------------------------------------------------------------------------
@@ -408,98 +527,90 @@ server_visits <- function(input, output, session) {
     delta <- kpi_deltas()$total_visits
     shiny::div(val, shiny::br(), format_delta_html(delta))
   })
-  
+
   output$visits_kpi_unique_visitors <- shiny::renderUI({
     val <- format(visit_kpis()$unique_visitors, big.mark = ",")
     delta <- kpi_deltas()$unique_visitors
     shiny::div(val, shiny::br(), format_delta_html(delta))
   })
-  
+
   output$visits_kpi_visits_per_visitor <- shiny::renderUI({
     val <- sprintf("%.1f", visit_kpis()$avg_visits_per_visitor)
     delta <- kpi_deltas()$avg_visits_per_visitor
     shiny::div(val, shiny::br(), format_delta_html(delta))
   })
-  
+
   output$visits_kpi_pages_per_visit <- shiny::renderUI({
     val <- sprintf("%.1f", visit_kpis()$avg_pages_per_visit)
     delta <- kpi_deltas()$avg_pages_per_visit
     shiny::div(val, shiny::br(), format_delta_html(delta))
   })
-  
+
   output$visits_kpi_median_duration <- shiny::renderUI({
     val <- format_visit_duration_ms(visit_kpis()$median_visit_duration_ms)
     delta <- kpi_deltas()$median_visit_duration_ms
     shiny::div(val, shiny::br(), format_delta_html(delta))
   })
-  
+
   # ----------------------------------------------------------------------------
   # Quick range observer: update date range and granularity
   # ----------------------------------------------------------------------------
-  shiny::observeEvent(input$visits_date_preset, {
-    shiny::req(input$visits_date_preset)
-    
-    end_date <- Sys.Date()
-    
-    start_date <- switch(
-      input$visits_date_preset,
-      "all_dates" = VISITS_EARLIEST_DATE,
-      "last_7" = end_date - 6,
-      "last_30" = end_date - 29,
-      "last_90" = end_date - 89,
-      "custom" = NULL
-    )
-    
-    granularity <- switch(
-      input$visits_date_preset,
-      "all_dates" = "monthly",
-      "last_7" = "daily",
-      "last_30" = "daily",
-      "last_90" = "weekly",
-      "custom" = NULL
-    )
-    
-    if (!is.null(start_date)) {
-      start_date <- max(start_date, VISITS_EARLIEST_DATE)
-      
-      shiny::updateDateRangeInput(
-        session = session,
-        inputId = "visits_date_range",
-        start = start_date,
-        end = end_date
+  shiny::observeEvent(
+    input$visits_date_preset,
+    {
+      shiny::req(input$visits_date_preset)
+
+      end_date <- Sys.Date()
+
+      start_date <- switch(
+        input$visits_date_preset,
+        "all_dates" = VISITS_EARLIEST_DATE,
+        "last_7" = end_date - 6,
+        "last_30" = end_date - 29,
+        "last_90" = end_date - 89,
+        "custom" = NULL
       )
-    }
-    
-    if (!is.null(granularity)) {
-      shiny::updateSelectInput(session = session,
-                               inputId = "visits_trend_granularity",
-                               selected = granularity)
-    }
-  }, ignoreInit = TRUE)
-  
+
+      granularity <- switch(
+        input$visits_date_preset,
+        "all_dates" = "monthly",
+        "last_7" = "daily",
+        "last_30" = "daily",
+        "last_90" = "weekly",
+        "custom" = NULL
+      )
+
+      if (!is.null(start_date)) {
+        start_date <- max(start_date, VISITS_EARLIEST_DATE)
+
+        shiny::updateDateRangeInput(
+          session = session,
+          inputId = "visits_date_range",
+          start = start_date,
+          end = end_date
+        )
+      }
+
+      if (!is.null(granularity)) {
+        shiny::updateSelectInput(
+          session = session,
+          inputId = "visits_trend_granularity",
+          selected = granularity
+        )
+      }
+    },
+    ignoreInit = TRUE
+  )
+
   # ----------------------------------------------------------------------------
   # Trend chart: dynamic section title
   # ----------------------------------------------------------------------------
   output$visits_trend_title <- shiny::renderText({
     metric <- input$visits_trend_metric
-    if (is.null(metric)) metric <- "visits"
-    
-    switch(metric,
-           "visits" = "Is usage growing?",
-           "unique_visitors" = "Is our audience growing?",
-           "pages_per_visit" = "Are visits getting deeper?",
-           "median_duration" = "Are users staying longer?"
-    )
-  })
-  
-  # ----------------------------------------------------------------------------
-  # Trend chart: dynamic section title
-  # ----------------------------------------------------------------------------
-  output$visits_trend_title <- shiny::renderText({
-    metric <- input$visits_trend_metric
-    if (is.null(metric))
+    if (is.null(metric)) {
       metric <- "visits"
-    
+    }
+
     switch(
       metric,
       "visits" = "Is usage growing?",
@@ -508,26 +619,43 @@ server_visits <- function(input, output, session) {
       "median_duration" = "Are users staying longer?"
     )
   })
-  
+
+  # ----------------------------------------------------------------------------
+  # Trend chart: dynamic section title
+  # ----------------------------------------------------------------------------
+  output$visits_trend_title <- shiny::renderText({
+    metric <- input$visits_trend_metric
+    if (is.null(metric)) {
+      metric <- "visits"
+    }
+
+    switch(
+      metric,
+      "visits" = "Is usage growing?",
+      "unique_visitors" = "Is our audience growing?",
+      "pages_per_visit" = "Are visits getting deeper?",
+      "median_duration" = "Are users staying longer?"
+    )
+  })
+
   # ----------------------------------------------------------------------------
   # Real Usage Trend chart (metric-aware)
   # ----------------------------------------------------------------------------
   output$visits_usage_trend_plot <- plotly::renderPlotly({
-    
     granularity <- input$visits_trend_granularity
     metric <- input$visits_trend_metric
     start_date <- input$visits_date_range[1]
     end_date <- input$visits_date_range[2]
-    
+
     shiny::req(start_date, end_date, granularity, metric)
-    
+
     start_date <- max(as.Date(start_date), VISITS_EARLIEST_DATE)
     end_date <- as.Date(end_date)
     shiny::req(start_date <= end_date)
-    
+
     df <- filtered_visit_summary()
     df$visit_date <- as.Date(df$visit_date)
-    
+
     # Assign aggregation period based on granularity
     if (granularity == "daily") {
       df$period <- df$visit_date
@@ -543,23 +671,30 @@ server_visits <- function(input, output, session) {
       grid_end <- as.Date(format(end_date, "%Y-%m-01"))
       grid <- data.frame(period = seq.Date(grid_start, grid_end, by = "month"))
     }
-    
+
     # Aggregate based on selected metric
-    summary_data <- switch(metric,
-                           "visits" = df %>%
-                             dplyr::group_by(period) %>%
-                             dplyr::summarise(value = dplyr::n(), .groups = "drop"),
-                           "unique_visitors" = df %>%
-                             dplyr::group_by(period) %>%
-                             dplyr::summarise(value = dplyr::n_distinct(user_id), .groups = "drop"),
-                           "pages_per_visit" = df %>%
-                             dplyr::group_by(period) %>%
-                             dplyr::summarise(value = mean(page_view_count, na.rm = TRUE), .groups = "drop"),
-                           "median_duration" = df %>%
-                             dplyr::group_by(period) %>%
-                             dplyr::summarise(value = median(total_time_spent_ms, na.rm = TRUE) / 60000, .groups = "drop")
+    summary_data <- switch(
+      metric,
+      "visits" = df %>%
+        dplyr::group_by(period) %>%
+        dplyr::summarise(value = dplyr::n(), .groups = "drop"),
+      "unique_visitors" = df %>%
+        dplyr::group_by(period) %>%
+        dplyr::summarise(value = dplyr::n_distinct(user_id), .groups = "drop"),
+      "pages_per_visit" = df %>%
+        dplyr::group_by(period) %>%
+        dplyr::summarise(
+          value = mean(page_view_count, na.rm = TRUE),
+          .groups = "drop"
+        ),
+      "median_duration" = df %>%
+        dplyr::group_by(period) %>%
+        dplyr::summarise(
+          value = median(total_time_spent_ms, na.rm = TRUE) / 60000,
+          .groups = "drop"
+        )
     )
-    
+
     # Join onto the full period grid.
     # For count metrics, empty periods = 0. For average metrics, leave as NA (gap).
     if (metric %in% c("visits", "unique_visitors")) {
@@ -572,19 +707,19 @@ server_visits <- function(input, output, session) {
         dplyr::left_join(summary_data, by = "period") %>%
         dplyr::arrange(period)
     }
-    
+
     # Weekend shading bands (daily granularity only)
     weekend_bands <- NULL
     if (granularity == "daily") {
       all_dates <- seq.Date(start_date, end_date, by = "day")
-      wday_num <- as.integer(format(all_dates, "%u"))   # 1 = Mon ... 6 = Sat, 7 = Sun
+      wday_num <- as.integer(format(all_dates, "%u")) # 1 = Mon ... 6 = Sat, 7 = Sun
       weekend_dates <- all_dates[wday_num %in% c(6, 7)]
       if (length(weekend_dates) > 0) {
         # Finite y-bounds from the data (ggplotly handles these reliably)
         y_vals <- plot_data$value[!is.na(plot_data$value)]
         y_lo <- if (length(y_vals) > 0) min(y_vals) else 0
         y_hi <- if (length(y_vals) > 0) max(y_vals) else 1
-        
+
         weekend_bands <- data.frame(
           xmin = weekend_dates,
           xmax = weekend_dates + 1,
@@ -593,7 +728,7 @@ server_visits <- function(input, output, session) {
         )
       }
     }
-    
+
     # Axis labels
     x_date_labels <- switch(
       granularity,
@@ -601,14 +736,15 @@ server_visits <- function(input, output, session) {
       "weekly" = "%d %b",
       "monthly" = "%b %Y"
     )
-    
-    y_label <- switch(metric,
-                      "visits" = "Visits",
-                      "unique_visitors" = "Unique Visitors",
-                      "pages_per_visit" = "Pages per Visit",
-                      "median_duration" = "Median Duration (minutes)"
+
+    y_label <- switch(
+      metric,
+      "visits" = "Visits",
+      "unique_visitors" = "Unique Visitors",
+      "pages_per_visit" = "Pages per Visit",
+      "median_duration" = "Median Duration (minutes)"
     )
-    
+
     # Y-axis breaks: whole numbers for counts, auto for averages
     y_breaks <- if (metric %in% c("visits", "unique_visitors")) {
       function(limits) {
@@ -622,21 +758,22 @@ server_visits <- function(input, output, session) {
     } else {
       ggplot2::waiver()
     }
-    
+
     # Build chart
     p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = period, y = value))
-    
+
     # Add subtle weekend shading (daily only)
     if (!is.null(weekend_bands)) {
-      p <- p + ggplot2::geom_rect(
-        data = weekend_bands,
-        ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-        fill = "#9e9e9e",
-        alpha = 0.5,
-        inherit.aes = FALSE
-      )
+      p <- p +
+        ggplot2::geom_rect(
+          data = weekend_bands,
+          ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+          fill = "#9e9e9e",
+          alpha = 0.5,
+          inherit.aes = FALSE
+        )
     }
-    
+
     p <- p +
       ggplot2::geom_line(color = "#0d6efd", linewidth = 1, group = 1) +
       ggplot2::geom_point(color = "#0d6efd", size = 2.5) +
@@ -659,27 +796,32 @@ server_visits <- function(input, output, session) {
         panel.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
         legend.position = "none"
       )
-    
+
     plotly::ggplotly(p) %>%
       plotly::config(displayModeBar = FALSE)
   })
-  
+
   # ----------------------------------------------------------------------------
   # Breakdown chart: Visits by Country
   # ----------------------------------------------------------------------------
   output$visits_country_chart <- plotly::renderPlotly({
     df <- filtered_visit_summary()
     shiny::req(nrow(df) > 0)
-    
+
     country_counts <- df %>%
       dplyr::count(country_name, name = "count") %>%
       dplyr::arrange(dplyr::desc(count)) %>%
       head(10)
-    
-    country_counts$country_name <- reorder(country_counts$country_name, country_counts$count)
-    
-    p <- ggplot2::ggplot(country_counts,
-                         ggplot2::aes(x = country_name, y = count, fill = country_name)) +
+
+    country_counts$country_name <- reorder(
+      country_counts$country_name,
+      country_counts$count
+    )
+
+    p <- ggplot2::ggplot(
+      country_counts,
+      ggplot2::aes(x = country_name, y = count, fill = country_name)
+    ) +
       ggplot2::geom_bar(stat = "identity") +
       ggplot2::coord_flip() +
       ggplot2::labs(
@@ -697,27 +839,32 @@ server_visits <- function(input, output, session) {
         panel.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
         legend.position = "none"
       )
-    
+
     plotly::ggplotly(p) %>%
       plotly::config(displayModeBar = FALSE)
   })
-  
+
   # ----------------------------------------------------------------------------
   # Breakdown chart: Visits by User Type
   # ----------------------------------------------------------------------------
   output$visits_user_type_chart <- plotly::renderPlotly({
     df <- filtered_visit_summary()
     shiny::req(nrow(df) > 0)
-    
+
     user_type_counts <- df %>%
       dplyr::count(user_type, name = "count") %>%
       dplyr::arrange(dplyr::desc(count)) %>%
       head(10)
-    
-    user_type_counts$user_type <- reorder(user_type_counts$user_type, user_type_counts$count)
-    
-    p <- ggplot2::ggplot(user_type_counts,
-                         ggplot2::aes(x = user_type, y = count, fill = user_type)) +
+
+    user_type_counts$user_type <- reorder(
+      user_type_counts$user_type,
+      user_type_counts$count
+    )
+
+    p <- ggplot2::ggplot(
+      user_type_counts,
+      ggplot2::aes(x = user_type, y = count, fill = user_type)
+    ) +
       ggplot2::geom_bar(stat = "identity") +
       ggplot2::coord_flip() +
       ggplot2::labs(
@@ -735,33 +882,40 @@ server_visits <- function(input, output, session) {
         panel.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
         legend.position = "none"
       )
-    
+
     plotly::ggplotly(p) %>%
       plotly::config(displayModeBar = FALSE)
   })
-  
+
   # ----------------------------------------------------------------------------
   # Breakdown chart: Visits by Language
   # ----------------------------------------------------------------------------
   output$visits_language_chart <- plotly::renderPlotly({
     df <- filtered_visit_summary()
     shiny::req(nrow(df) > 0)
-    
+
     # Clean language values
-    df$language <- ifelse(is.na(df$language) |
-                            trimws(df$language) == "",
-                          "Unknown",
-                          df$language)
-    
+    df$language <- ifelse(
+      is.na(df$language) |
+        trimws(df$language) == "",
+      "Unknown",
+      df$language
+    )
+
     language_counts <- df %>%
       dplyr::count(language, name = "count") %>%
       dplyr::arrange(dplyr::desc(count)) %>%
       head(10)
-    
-    language_counts$language <- reorder(language_counts$language, language_counts$count)
-    
-    p <- ggplot2::ggplot(language_counts,
-                         ggplot2::aes(x = language, y = count, fill = language)) +
+
+    language_counts$language <- reorder(
+      language_counts$language,
+      language_counts$count
+    )
+
+    p <- ggplot2::ggplot(
+      language_counts,
+      ggplot2::aes(x = language, y = count, fill = language)
+    ) +
       ggplot2::geom_bar(stat = "identity") +
       ggplot2::coord_flip() +
       ggplot2::labs(
@@ -779,19 +933,18 @@ server_visits <- function(input, output, session) {
         panel.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
         legend.position = "none"
       )
-    
+
     plotly::ggplotly(p) %>%
       plotly::config(displayModeBar = FALSE)
   })
-  
-  
+
   # ----------------------------------------------------------------------------
   # Engagement Quality: Bounce vs Deep Dive
   # ----------------------------------------------------------------------------
   output$visits_engagement_chart <- plotly::renderPlotly({
     df <- filtered_visit_summary()
     shiny::req(nrow(df) > 0)
-    
+
     # Classify each visit into an engagement tier
     engagement_data <- df %>%
       dplyr::mutate(
@@ -802,14 +955,19 @@ server_visits <- function(input, output, session) {
           TRUE ~ "Browse"
         )
       ) %>%
-      dplyr::mutate(engagement = factor(engagement, levels = c("Bounce", "Browse", "Deep Dive"))) %>%
+      dplyr::mutate(
+        engagement = factor(
+          engagement,
+          levels = c("Bounce", "Browse", "Deep Dive")
+        )
+      ) %>%
       dplyr::count(engagement, name = "count", .drop = FALSE)
-    
+
     # Donut chart
     plot_ly(
       data = engagement_data,
-      labels = ~ engagement,
-      values = ~ count,
+      labels = ~engagement,
+      values = ~count,
       type = "pie",
       hole = 0.5,
       sort = FALSE,
@@ -820,7 +978,10 @@ server_visits <- function(input, output, session) {
       hovertemplate = "%{label}: %{value} visits (%{percent})<extra></extra>"
     ) %>%
       plotly::layout(
-        title = list(text = "<b>How engaged are visits?</b>", font = list(size = 18)),
+        title = list(
+          text = "<b>How engaged are visits?</b>",
+          font = list(size = 18)
+        ),
         paper_bgcolor = "#e8e8e8",
         plot_bgcolor = "#e8e8e8",
         showlegend = FALSE,
@@ -834,29 +995,30 @@ server_visits <- function(input, output, session) {
       ) %>%
       plotly::config(displayModeBar = FALSE)
   })
-  
+
   # ----------------------------------------------------------------------------
   # Filtered page views (for content vs non-content analysis)
   # ----------------------------------------------------------------------------
   filtered_page_views <- shiny::reactive({
     shiny::req(visit_page_views_data)
-    
+
     df <- visit_page_views_data
     df$visit_date <- as.Date(df$visit_date)
-    
+
     # Date filter
     start_date <- as.Date(input$visits_date_range[1])
     end_date <- as.Date(input$visits_date_range[2])
     shiny::req(start_date, end_date)
     start_date <- max(start_date, VISITS_EARLIEST_DATE)
     shiny::req(start_date <= end_date)
-    
+
     df <- df %>%
       dplyr::filter(visit_date >= start_date, visit_date <= end_date)
-    
+
     # Global filters
-    filter_is_active <- function(x)
-      ! is.null(x) && nzchar(x) && x != "All"
+    filter_is_active <- function(x) {
+      !is.null(x) && nzchar(x) && x != "All"
+    }
     if (filter_is_active(input$filter_country)) {
       df <- df %>% dplyr::filter(country_name == input$filter_country)
     }
@@ -867,28 +1029,39 @@ server_visits <- function(input, output, session) {
       df <- df %>% dplyr::filter(user_type == input$filter_user_type)
     }
     if (filter_is_active(input$filter_account_mgr)) {
-      df <- df %>% dplyr::filter(account_manager_name == input$filter_account_mgr)
+      df <- df %>%
+        dplyr::filter(account_manager_name == input$filter_account_mgr)
     }
-    
+
     df
   })
-  
+
   # ----------------------------------------------------------------------------
   # Engagement Quality: Content vs Non-Content
   # ----------------------------------------------------------------------------
   output$visits_content_chart <- plotly::renderPlotly({
     df <- filtered_page_views()
     shiny::req(nrow(df) > 0)
-    
+
     content_data <- df %>%
-      dplyr::mutate(page_type = dplyr::case_when(is_content == TRUE ~ "Course Content", TRUE ~ "Non-Content")) %>%
-      dplyr::mutate(page_type = factor(page_type, levels = c("Course Content", "Non-Content"))) %>%
+      dplyr::mutate(
+        page_type = dplyr::case_when(
+          is_content == TRUE ~ "Course Content",
+          TRUE ~ "Non-Content"
+        )
+      ) %>%
+      dplyr::mutate(
+        page_type = factor(
+          page_type,
+          levels = c("Course Content", "Non-Content")
+        )
+      ) %>%
       dplyr::count(page_type, name = "count", .drop = FALSE)
-    
+
     plot_ly(
       data = content_data,
-      labels = ~ page_type,
-      values = ~ count,
+      labels = ~page_type,
+      values = ~count,
       type = "pie",
       hole = 0.5,
       sort = FALSE,
@@ -899,7 +1072,10 @@ server_visits <- function(input, output, session) {
       hovertemplate = "%{label}: %{value} page views (%{percent})<extra></extra>"
     ) %>%
       plotly::layout(
-        title = list(text = "<b>Is activity focused on course content?</b>", font = list(size = 18)),
+        title = list(
+          text = "<b>Is activity focused on course content?</b>",
+          font = list(size = 18)
+        ),
         paper_bgcolor = "#e8e8e8",
         plot_bgcolor = "#e8e8e8",
         showlegend = FALSE,
@@ -911,6 +1087,308 @@ server_visits <- function(input, output, session) {
         ),
         font = list(color = "#000000")
       ) %>%
+      plotly::config(displayModeBar = FALSE)
+  })
+
+  #__________________________________________________________________________________________________________________________________________
+  # Second TAB: Pages etc
+  #__________________________________________________________________________________________________________________________________________
+
+  # ----------------------------------------------------------------------------
+  # Pages & Content: Top Pages
+  # ----------------------------------------------------------------------------
+  output$visits_top_pages_chart <- plotly::renderPlotly({
+    df <- filtered_page_views()
+    shiny::req(nrow(df) > 0)
+
+    # Apply the cleaning helper
+    cleaned <- clean_page_paths(df$page_path)
+    df$clean_label <- cleaned$clean_label
+    df$page_category <- cleaned$page_category
+
+    # Filter by selected category (if not "all")
+    selected_category <- input$visits_pages_category
+    if (!is.null(selected_category) && selected_category != "all") {
+      df <- df %>% dplyr::filter(page_category == selected_category)
+      shiny::req(nrow(df) > 0)
+    }
+
+    # Aggregate by the clean label
+    top_pages <- df %>%
+      dplyr::count(clean_label, page_category, name = "views") %>%
+      dplyr::arrange(dplyr::desc(views)) %>%
+      head(10)
+
+    # Truncate long labels if they exceed 50 chars
+    top_pages$display_label <- ifelse(
+      nchar(top_pages$clean_label) > 50,
+      paste0(substr(top_pages$clean_label, 1, 50), "..."),
+      top_pages$clean_label
+    )
+
+    # Guarantee uniqueness (truncation can make two long labels identical)
+    top_pages$display_label <- make.unique(top_pages$display_label)
+
+    # Order so the most-viewed page appears at the top
+    top_pages$display_label <- factor(
+      top_pages$display_label,
+      levels = rev(top_pages$display_label)
+    )
+
+    # Order so the most-viewed page appears at the top
+    top_pages$display_label <- factor(
+      top_pages$display_label,
+      levels = rev(top_pages$display_label)
+    )
+
+    p <- ggplot2::ggplot(
+      top_pages,
+      ggplot2::aes(x = display_label, y = views, fill = views)
+    ) +
+      ggplot2::geom_bar(stat = "identity") +
+      ggplot2::coord_flip() +
+      ggplot2::scale_fill_gradient(low = "#cfe2ff", high = "#0d6efd") +
+      ggplot2::labs(
+        title = NULL,
+        x = "Page",
+        y = "Page Views"
+      ) +
+      ggplot2::theme_minimal() +
+      tidyquant::theme_tq() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 18, face = "bold"),
+        axis.title = ggplot2::element_text(face = "bold"),
+        plot.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
+        panel.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
+        legend.position = "none"
+      )
+
+    plotly::ggplotly(p) %>%
+      plotly::config(displayModeBar = FALSE)
+  })
+
+  # ----------------------------------------------------------------------------
+  # Pages & Content: Time on Page
+  # ----------------------------------------------------------------------------
+  output$visits_time_on_page_chart <- plotly::renderPlotly({
+    df <- filtered_page_views()
+    shiny::req(nrow(df) > 0)
+
+    cleaned <- clean_page_paths(df$page_path)
+    df$clean_label <- cleaned$clean_label
+    df$page_category <- cleaned$page_category
+
+    # Filter by selected category (if not "all")
+    selected_category <- input$visits_time_category
+    if (!is.null(selected_category) && selected_category != "all") {
+      df <- df %>% dplyr::filter(page_category == selected_category)
+      shiny::req(nrow(df) > 0)
+    }
+
+    # Median time per page. Require a few views so the median is meaningful
+    # (tune this threshold down if the chart looks sparse).
+    time_per_page <- df %>%
+      dplyr::group_by(clean_label, page_category) %>%
+      dplyr::summarise(
+        median_time_ms = median(time_spent_ms, na.rm = TRUE),
+        views = dplyr::n(),
+        .groups = "drop"
+      ) %>%
+      dplyr::filter(views >= 3) %>%
+      dplyr::arrange(dplyr::desc(median_time_ms)) %>%
+      head(10)
+
+    shiny::req(nrow(time_per_page) > 0)
+
+    # Convert milliseconds to seconds for readability
+    time_per_page$median_time_s <- time_per_page$median_time_ms / 1000
+
+    # Truncate + ensure unique labels (same pattern as Top Pages)
+    time_per_page$display_label <- ifelse(
+      nchar(time_per_page$clean_label) > 50,
+      paste0(substr(time_per_page$clean_label, 1, 50), "..."),
+      time_per_page$clean_label
+    )
+    time_per_page$display_label <- make.unique(time_per_page$display_label)
+    time_per_page$display_label <- factor(
+      time_per_page$display_label,
+      levels = rev(time_per_page$display_label)
+    )
+
+    p <- ggplot2::ggplot(
+      time_per_page,
+      ggplot2::aes(x = display_label, y = median_time_s, fill = median_time_s)
+    ) +
+      ggplot2::geom_bar(stat = "identity") +
+      ggplot2::coord_flip() +
+      ggplot2::scale_fill_gradient(low = "#cfe2ff", high = "#0d6efd") +
+      ggplot2::labs(
+        title = NULL,
+        x = "Page",
+        y = "Median Time on Page (seconds)"
+      ) +
+      ggplot2::theme_minimal() +
+      tidyquant::theme_tq() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 18, face = "bold"),
+        axis.title = ggplot2::element_text(face = "bold"),
+        plot.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
+        panel.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
+        legend.position = "none"
+      )
+
+    plotly::ggplotly(p) %>%
+      plotly::config(displayModeBar = FALSE)
+  })
+
+  # ----------------------------------------------------------------------------
+  # Pages & Content: Entry Pages
+  # ----------------------------------------------------------------------------
+  output$visits_entry_pages_chart <- plotly::renderPlotly({
+    df <- filtered_page_views()
+    shiny::req(nrow(df) > 0)
+
+    entry_counts <- boundary_page_counts(df, "entry")
+    shiny::req(nrow(entry_counts) > 0)
+
+    entry_counts$display_label <- ifelse(
+      nchar(entry_counts$clean_label) > 50,
+      paste0(substr(entry_counts$clean_label, 1, 50), "..."),
+      entry_counts$clean_label
+    )
+    entry_counts$display_label <- make.unique(entry_counts$display_label)
+    entry_counts$display_label <- factor(
+      entry_counts$display_label,
+      levels = rev(entry_counts$display_label)
+    )
+
+    p <- ggplot2::ggplot(
+      entry_counts,
+      ggplot2::aes(x = display_label, y = visits, fill = visits)
+    ) +
+      ggplot2::geom_bar(stat = "identity") +
+      ggplot2::coord_flip() +
+      ggplot2::scale_fill_gradient(low = "#cfe2ff", high = "#0d6efd") +
+      ggplot2::labs(
+        title = NULL,
+        x = "Page",
+        y = "Visits Starting Here"
+      ) +
+      ggplot2::theme_minimal() +
+      tidyquant::theme_tq() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 18, face = "bold"),
+        axis.title = ggplot2::element_text(face = "bold"),
+        plot.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
+        panel.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
+        legend.position = "none"
+      )
+
+    plotly::ggplotly(p) %>%
+      plotly::config(displayModeBar = FALSE)
+  })
+
+  # ----------------------------------------------------------------------------
+  # Pages & Content: Exit Pages
+  # ----------------------------------------------------------------------------
+  output$visits_exit_pages_chart <- plotly::renderPlotly({
+    df <- filtered_page_views()
+    shiny::req(nrow(df) > 0)
+
+    cleaned <- clean_page_paths(df$page_path)
+    df$page_category <- cleaned$page_category
+
+    selected_category <- input$visits_exit_category
+    if (!is.null(selected_category) && selected_category != "all") {
+      df <- df %>% dplyr::filter(page_category == selected_category)
+      shiny::req(nrow(df) > 0)
+    }
+
+    exit_counts <- boundary_page_counts(df, "exit")
+    shiny::req(nrow(exit_counts) > 0)
+
+    exit_counts$display_label <- ifelse(
+      nchar(exit_counts$clean_label) > 50,
+      paste0(substr(exit_counts$clean_label, 1, 50), "..."),
+      exit_counts$clean_label
+    )
+    exit_counts$display_label <- make.unique(exit_counts$display_label)
+    exit_counts$display_label <- factor(
+      exit_counts$display_label,
+      levels = rev(exit_counts$display_label)
+    )
+
+    p <- ggplot2::ggplot(
+      exit_counts,
+      ggplot2::aes(x = display_label, y = visits, fill = visits)
+    ) +
+      ggplot2::geom_bar(stat = "identity") +
+      ggplot2::coord_flip() +
+      ggplot2::scale_fill_gradient(low = "#cfe2ff", high = "#0d6efd") +
+      ggplot2::labs(
+        title = NULL,
+        x = "Page",
+        y = "Visits Ending Here"
+      ) +
+      ggplot2::theme_minimal() +
+      tidyquant::theme_tq() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 18, face = "bold"),
+        axis.title = ggplot2::element_text(face = "bold"),
+        plot.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
+        panel.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
+        legend.position = "none"
+      )
+
+    plotly::ggplotly(p) %>%
+      plotly::config(displayModeBar = FALSE)
+  })
+
+  # ----------------------------------------------------------------------------
+  # Pages & Content: Views by Category (summary)
+  # ----------------------------------------------------------------------------
+  output$visits_category_summary_chart <- plotly::renderPlotly({
+    df <- filtered_page_views()
+    shiny::req(nrow(df) > 0)
+
+    cleaned <- clean_page_paths(df$page_path)
+    df$page_category <- cleaned$page_category
+
+    cat_counts <- df %>%
+      dplyr::count(page_category, name = "views") %>%
+      dplyr::arrange(dplyr::desc(views))
+
+    shiny::req(nrow(cat_counts) > 0)
+
+    # Order so the largest category is at the top
+    cat_counts$page_category <- factor(
+      cat_counts$page_category,
+      levels = rev(cat_counts$page_category)
+    )
+
+    p <- ggplot2::ggplot(
+      cat_counts,
+      ggplot2::aes(x = page_category, y = views, fill = views)
+    ) +
+      ggplot2::geom_bar(stat = "identity") +
+      ggplot2::coord_flip() +
+      ggplot2::scale_fill_gradient(low = "#cfe2ff", high = "#0d6efd") +
+      ggplot2::labs(
+        title = NULL,
+        x = "Category",
+        y = "Page Views"
+      ) +
+      ggplot2::theme_minimal() +
+      tidyquant::theme_tq() +
+      ggplot2::theme(
+        plot.title = ggplot2::element_text(size = 18, face = "bold"),
+        axis.title = ggplot2::element_text(face = "bold"),
+        plot.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
+        panel.background = ggplot2::element_rect(fill = "#e8e8e8", color = NA),
+        legend.position = "none"
+      )
+
+    plotly::ggplotly(p) %>%
       plotly::config(displayModeBar = FALSE)
   })
 }
