@@ -15,8 +15,6 @@ source("R/ui_visits.R")
 source("R/server_visits.R")
 
 
-
-
 # ==============================================================================
 # USER INTERFACE (UI)
 # ==============================================================================
@@ -34,7 +32,7 @@ dashboard_ui <- bslib::page_navbar(
   theme = professional_theme,
   id = "main_tabs",
   fillable = FALSE,
-  
+
   # Sidebar with cascading filters
   sidebar = bslib::sidebar(
     title = "Filters",
@@ -64,15 +62,47 @@ dashboard_ui <- bslib::page_navbar(
       selected = ""
     )
   ),
-  
-  
-  # Overview Tab
+
+  header = shiny::tagList(
+    shiny::tags$head(shiny::tags$style(shiny::HTML(
+      "
+      #app-loading-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(255, 255, 255, 0.65);
+        z-index: 9999;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+      }
+      .shiny-busy #app-loading-overlay {
+        display: flex;
+        animation: appOverlayIn 0s forwards 0.5s;
+      }
+      @keyframes appOverlayIn { to { opacity: 1; } }
+    "
+    ))),
+    shiny::tags$div(
+      id = "app-loading-overlay",
+      shiny::tags$div(
+        class = "d-flex flex-column align-items-center",
+        shiny::tags$div(
+          class = "spinner-border text-primary",
+          style = "width: 3rem; height: 3rem;",
+          role = "status"
+        ),
+        shiny::tags$span(class = "mt-2 text-muted", "Loading data...")
+      )
+    )
+  ),
+
+  # Tabs
   ui_overview,
-  # NEW: Characteristics tab
+   ui_visits,
   ui_characteristics,
   ui_device_characteristics,
-  ui_visits
-  
+ 
 )
 
 
@@ -89,10 +119,7 @@ dashboard_server <- function(input, output, session) {
   server_device_characteristics(input, output, session)
   #visits tab
   server_visits(input, output, session)
-  
-  
 }
-
 
 
 # ==============================================================================
@@ -108,8 +135,9 @@ login_ui <- shiny::div(
     align-items: center;
     justify-content: center;
   ",
-  
-  shiny::tags$style(shiny::HTML("
+
+  shiny::tags$style(shiny::HTML(
+    "
     /* Password input styling */
     #login_password {
       background-color: white !important;
@@ -137,8 +165,9 @@ login_ui <- shiny::div(
       margin-top: 15px;
       font-size: 14px;
     }
-  ")),
-  
+  "
+  )),
+
   shiny::div(
     style = "
       max-width: 400px;
@@ -154,9 +183,9 @@ login_ui <- shiny::div(
     ),
     shiny::passwordInput("login_password", "Password:", width = "100%"),
     shiny::actionButton(
-      "login_btn", 
-      "Login", 
-      class = "btn-primary", 
+      "login_btn",
+      "Login",
+      class = "btn-primary",
       style = "width: 100%; margin-top: 15px;"
     ),
     shiny::uiOutput("login_error")
@@ -174,10 +203,9 @@ ui <- bslib::page_fluid(
 # WRAPPER SERVER — handles login, then delegates to dashboard_server
 # ==============================================================================
 server <- function(input, output, session) {
-  
   # Track authentication state
   authenticated <- shiny::reactiveVal(FALSE)
-  
+
   # Render the appropriate UI
   output$app_ui <- shiny::renderUI({
     if (authenticated()) {
@@ -186,32 +214,44 @@ server <- function(input, output, session) {
       login_ui
     }
   })
-  
+
   # Handle login
   shiny::observeEvent(input$login_btn, {
     # Clear error message first
     output$login_error <- shiny::renderUI(NULL)
-    
-    if (isTRUE(nchar(input$login_password) > 0) && 
-        input$login_password == APP_PASSWORD) {
+
+    if (
+      isTRUE(nchar(input$login_password) > 0) &&
+        input$login_password == APP_PASSWORD
+    ) {
       authenticated(TRUE)
     } else {
       output$login_error <- shiny::renderUI({
-        shiny::div("Incorrect password. Please try again.", class = "login-error")
+        shiny::div(
+          "Incorrect password. Please try again.",
+          class = "login-error"
+        )
       })
     }
   })
-  
+
   # CRITICAL: Call dashboard_server ONLY AFTER the UI is rendered
   # onFlushed ensures the dashboard inputs exist in the DOM
-  shiny::observeEvent(authenticated(), {
-    if (authenticated()) {
-      session$onFlushed(function() {
-        dashboard_server(input, output, session)
-      }, once = TRUE)
-    }
-  }, once = TRUE, ignoreInit = TRUE)
+  shiny::observeEvent(
+    authenticated(),
+    {
+      if (authenticated()) {
+        session$onFlushed(
+          function() {
+            dashboard_server(input, output, session)
+          },
+          once = TRUE
+        )
+      }
+    },
+    once = TRUE,
+    ignoreInit = TRUE
+  )
 }
 
 shiny::shinyApp(ui = ui, server = server)
-
