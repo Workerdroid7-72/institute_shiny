@@ -2,128 +2,145 @@
 # UI: Overview Tab
 # ============================================================================
 
+# ============================================================================
+# HELPER: KPI value box with expand button
+# ============================================================================
+overview_kpi_card <- function(title, output_id, icon_name, theme, button_id) {
+  htmltools::div(
+    style = "position: relative; width: 100%; height: 100%;",
+    bslib::value_box(
+      title = title,
+      value = shiny::uiOutput(output_id),
+      showcase = shiny::icon(icon_name),
+      theme = theme
+    ),
+    shiny::actionButton(
+      button_id,
+      label = NULL,
+      icon = shiny::icon("expand"),
+      class = "btn-sm",
+      style = "position: absolute; top: 8px; right: 8px; z-index: 100; opacity: 0.7;"
+    )
+  )
+}
+
 ui_overview <- bslib::nav_panel(
   title = "Overview",
   icon = shiny::icon("gauge-high"),
-  
+
+  # --------------------------------------------------------------------------
+  # KPI CARDS
+  # --------------------------------------------------------------------------
   bslib::layout_column_wrap(
     width = 1 / 6,
     heights_equal = "all",
-    
-    # --- Total Users ---
-    htmltools::div(
-      style = "position: relative; width: 100%; height: 100%;",
-      bslib::value_box(
-        title = "Total Users",
-        value = shiny::textOutput("metric_total_users"),
-        showcase = shiny::icon("users"),
-        theme = "primary"
-      ),
-      shiny::actionButton(
-        "show_total_users",
-        label = NULL,
-        icon = shiny::icon("expand"),
-        class = "btn-sm",
-        style = "position: absolute; top: 8px; right: 8px; z-index: 100; opacity: 0.7;"
-      )
+
+    overview_kpi_card(
+      "Core 1 Completed",
+      "metric_core1",
+      "graduation-cap",
+      "warning",
+      "show_core1"
     ),
-    
-    # --- Active Users ---
-    htmltools::div(
-      style = "position: relative; width: 100%; height: 100%;",
-      bslib::value_box(
-        title = "Active Users (30d)",
-        value = shiny::textOutput("metric_active_users"),
-        showcase = shiny::icon("user-check"),
-        theme = "success"
-      ),
-      shiny::actionButton(
-        "show_active_users",
-        label = NULL,
-        icon = shiny::icon("expand"),
-        class = "btn-sm",
-        style = "position: absolute; top: 8px; right: 8px; z-index: 100; opacity: 0.7;"
-      )
+
+    overview_kpi_card(
+      "Total Users",
+      "metric_total_users",
+      "users",
+      "light",
+      "show_total_users"
     ),
-    
-    # --- New Users ---
-    htmltools::div(
-      style = "position: relative; width: 100%; height: 100%;",
-      bslib::value_box(
-        title = "New Users (30d)",
-        value = shiny::textOutput("metric_new_users"),
-        showcase = shiny::icon("user-plus"),
-        theme = "info"
-      ),
-      shiny::actionButton(
-        "show_new_users",
-        label = NULL,
-        icon = shiny::icon("expand"),
-        class = "btn-sm",
-        style = "position: absolute; top: 8px; right: 8px; z-index: 100; opacity: 0.7;"
-      )
+
+    overview_kpi_card(
+      "New Users (30d)",
+      "metric_new_users",
+      "user-plus",
+      "info",
+      "show_new_users"
     ),
-    
-    # --- Core 1 Completed ---
-    htmltools::div(
-      style = "position: relative; width: 100%; height: 100%;",
-      bslib::value_box(
-        title = "Core 1 Completed",
-        value = shiny::textOutput("metric_core1"),
-        showcase = shiny::icon("graduation-cap"),
-        theme = "warning"
-      ),
-      shiny::actionButton(
-        "show_core1",
-        label = NULL,
-        icon = shiny::icon("expand"),
-        class = "btn-sm",
-        style = "position: absolute; top: 8px; right: 8px; z-index: 100; opacity: 0.7;"
-      )
+
+    overview_kpi_card(
+      "Active Users (30d)",
+      "metric_active_users",
+      "user-check",
+      "success",
+      "show_active_users"
     ),
-    
-    # --- Inactive Users ---
-    htmltools::div(
-      style = "position: relative; width: 100%; height: 100%;",
-      bslib::value_box(
-        title = "Inactive Users (%)",
-        value = shiny::textOutput("metric_inactive_pct"),
-        showcase = shiny::icon("user-slash"),
-        theme = "danger"
-      ),
-      shiny::actionButton(
-        "show_inactive",
-        label = NULL,
-        icon = shiny::icon("expand"),
-        class = "btn-sm",
-        style = "position: absolute; top: 8px; right: 8px; z-index: 100; opacity: 0.7;"
-      )
+
+    overview_kpi_card(
+      "Not Started",
+      "metric_not_started",
+      "hourglass-start",
+      "dark",
+      "show_not_started"
     ),
-    
-    # --- Not Started ---
-    htmltools::div(
-      style = "position: relative; width: 100%; height: 100%;",
-      bslib::value_box(
-        title = "Not Started",
-        value = shiny::textOutput("metric_not_started"),
-        showcase = shiny::icon("hourglass-start"),
-        theme = "secondary"
-      ),
-      shiny::actionButton(
-        "show_not_started",
-        label = NULL,
-        icon = shiny::icon("expand"),
-        class = "btn-sm",
-        style = "position: absolute; top: 8px; right: 8px; z-index: 100; opacity: 0.7;"
-      )
+
+    overview_kpi_card(
+      "Inactive Users (%)",
+      "metric_inactive_pct",
+      "user-slash",
+      "danger",
+      "show_inactive"
     )
   ),
-  
-  # Charts section
+
+  # --------------------------------------------------------------------------
+  # KEY INSIGHTS
+  # --------------------------------------------------------------------------
+  shiny::div(
+    class = "mt-3",
+    bslib::card(
+      style = "background-color: rgba(13, 110, 253, 0.07); border: 1px solid rgba(13, 110, 253, 0.3);",
+      bslib::card_header(
+        style = "background-color: rgba(13, 110, 253, 0.15); border-bottom: 1px solid rgba(13, 110, 253, 0.3);",
+        shiny::div(
+          shiny::icon(
+            "lightbulb",
+            style = "color: #ffc107; margin-right: 8px;"
+          ),
+          shiny::strong("Key Insights")
+        )
+      ),
+      bslib::card_body(shiny::uiOutput("overview_insights"))
+    )
+  ),
+
+  # --------------------------------------------------------------------------
+  # HERO: Core 1 cumulative growth
+  # --------------------------------------------------------------------------
+  bslib::card(
+    bslib::card_body(
+      plotly::plotlyOutput("chart_core1_over_time", height = "450px")
+    )
+  ),
+
+  # --------------------------------------------------------------------------
+  # SECONDARY: Country adoption + New users
+  # --------------------------------------------------------------------------
   bslib::layout_column_wrap(
-    width = 1,
-    heights_equal = "all",
-    plotly::plotlyOutput("chart_new_users_over_time", height = "400px"),
-    plotly::plotlyOutput("chart_core1_over_time", height = "400px")
+    width = 1 / 2,
+
+    bslib::card(
+      bslib::card_body(
+        shiny::radioButtons(
+          inputId = "country_chart_metric",
+          label = NULL,
+          choices = c(
+            "Total Users" = "total",
+            "New Users (30d)" = "new30",
+            "Core 1 Completions" = "core1"
+          ),
+          selected = "total",
+          inline = TRUE
+        ),
+        plotly::plotlyOutput("chart_country_adoption", height = "350px")
+      )
+    ),
+
+    bslib::card(
+      bslib::card_body(
+        plotly::plotlyOutput("chart_new_users_over_time", height = "385px")
+      )
+    )
   )
 )

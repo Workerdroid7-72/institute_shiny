@@ -46,8 +46,6 @@ ui_visits <- bslib::nav_panel(
   value = "visits",
   icon = shiny::icon("chart-line"),
 
-  
-
   # --------------------------------------------------------------------------
   # Visit-level filter controls
   # --------------------------------------------------------------------------
@@ -88,27 +86,6 @@ ui_visits <- bslib::nav_panel(
       value = "visits_overview",
 
       # ------------------------------------------------------------------------
-      # INSIGHT SUMMARY CARD
-      # ------------------------------------------------------------------------
-      shiny::div(
-        class = "mt-3",
-        bslib::card(
-          style = "background-color: rgba(13, 110, 253, 0.07); border: 1px solid rgba(13, 110, 253, 0.3);",
-          bslib::card_header(
-            style = "background-color: rgba(13, 110, 253, 0.15); border-bottom: 1px solid rgba(13, 110, 253, 0.3);",
-            shiny::div(
-              shiny::icon(
-                "lightbulb",
-                style = "color: #ffc107; margin-right: 8px;"
-              ),
-              shiny::strong("Key Insights")
-            )
-          ),
-          bslib::card_body(shiny::htmlOutput("visits_insight_summary"))
-        )
-      ),
-
-      # ------------------------------------------------------------------------
       # 1) KPI STRIP
       # ------------------------------------------------------------------------
       shiny::div(
@@ -145,6 +122,27 @@ ui_visits <- bslib::nav_panel(
             "clock",
             theme = "danger"
           )
+        )
+      ),
+
+      # ------------------------------------------------------------------------
+      # INSIGHT SUMMARY CARD
+      # ------------------------------------------------------------------------
+      shiny::div(
+        class = "mt-3",
+        bslib::card(
+          style = "background-color: rgba(13, 110, 253, 0.07); border: 1px solid rgba(13, 110, 253, 0.3);",
+          bslib::card_header(
+            style = "background-color: rgba(13, 110, 253, 0.15); border-bottom: 1px solid rgba(13, 110, 253, 0.3);",
+            shiny::div(
+              shiny::icon(
+                "lightbulb",
+                style = "color: #ffc107; margin-right: 8px;"
+              ),
+              shiny::strong("Key Insights")
+            )
+          ),
+          bslib::card_body(shiny::htmlOutput("visits_insight_summary"))
         )
       ),
 
