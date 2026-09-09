@@ -500,28 +500,62 @@ server_overview <- function(input, output, session) {
     data <- filtered_user_data()
     shiny::req(nrow(data) > 0)
 
-    # Monthly registrations by user type (the stacked bars)
-    monthly_data <- data %>%
+    # Monthly NEW registrations by user type
+    monthly_new <- data %>%
       dplyr::mutate(
         month = as.Date(lubridate::floor_date(date_registered, "month"))
       ) %>%
       dplyr::group_by(month, user_type) %>%
-      dplyr::summarise(count = dplyr::n(), .groups = "drop")
+      dplyr::summarise(new_count = dplyr::n(), .groups = "drop")
 
-    # Monthly totals (the overlay line)
-    monthly_totals <- monthly_data %>%
-      dplyr::group_by(month) %>%
-      dplyr::summarise(total = sum(count), .groups = "drop")
-
-    start_date <- min(monthly_data$month)
-    end_date <- lubridate::floor_date(
-      lubridate::today() + lubridate::days(31),
-      "month"
+    # Complete grid: every month (first registration -> current) x every user type
+    all_months <- seq.Date(
+      from = min(monthly_new$month),
+      to = as.Date(lubridate::floor_date(lubridate::today(), "month")),
+      by = "month"
+    )
+    all_types <- unique(monthly_new$user_type)
+    grid <- expand.grid(
+      month = all_months,
+      user_type = all_types,
+      stringsAsFactors = FALSE
     )
 
+    # Fill gaps with 0, then cumulative-sum within each user type
+    monthly_filled <- grid %>%
+      dplyr::left_join(monthly_new, by = c("month", "user_type")) %>%
+      dplyr::mutate(new_count = dplyr::coalesce(new_count, 0L)) %>%
+      dplyr::arrange(user_type, month) %>%
+      dplyr::group_by(user_type) %>%
+      dplyr::mutate(cumulative = cumsum(new_count)) %>%
+      dplyr::ungroup()
+
+    # Choose the measure based on the toggle
+    mode <- input$new_users_chart_mode
+
+    plot_data <- monthly_filled %>%
+      dplyr::mutate(value = if (mode == "cumulative") cumulative else new_count)
+
+    monthly_totals <- plot_data %>%
+      dplyr::group_by(month) %>%
+      dplyr::summarise(total = sum(value), .groups = "drop")
+
+    if (mode == "cumulative") {
+      chart_title <- "Total User Base Over Time"
+      chart_subtitle <- "Bars show cumulative users by type; the line traces the total user base"
+      y_label <- "Cumulative Users"
+    } else {
+      chart_title <- "New User Registrations Over Time"
+      chart_subtitle <- "Bars show new registrations by type; the line traces the monthly total"
+      y_label <- "New Users"
+    }
+
+    start_date <- min(plot_data$month)
+    end_date <- max(plot_data$month)
+
     p <- ggplot2::ggplot(
-      monthly_data,
-      ggplot2::aes(x = month, y = count, fill = user_type)
+      plot_data,
+      ggplot2::aes(x = month, y = value, fill = user_type)
     ) +
       ggplot2::geom_col(width = 22) +
       ggplot2::geom_line(
@@ -539,10 +573,10 @@ server_overview <- function(input, output, session) {
         size = 2.5
       ) +
       ggplot2::labs(
-        title = "New User Registrations Over Time",
-        subtitle = "Bars show registrations by user type; the line traces the monthly total",
+        title = chart_title,
+        subtitle = chart_subtitle,
         x = "Month",
-        y = "Number of New Users",
+        y = y_label,
         fill = "User Type"
       ) +
       ggplot2::theme_minimal() +
@@ -557,7 +591,7 @@ server_overview <- function(input, output, session) {
         legend.position = "bottom"
       ) +
       ggplot2::scale_x_date(
-        limits = c(start_date - 15, end_date),
+        limits = c(start_date - 15, end_date + 15),
         date_breaks = "1 month",
         date_labels = "%b %Y"
       ) +

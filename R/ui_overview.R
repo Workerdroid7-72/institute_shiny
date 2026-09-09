@@ -139,7 +139,14 @@ ui_overview <- bslib::nav_panel(
 
     bslib::card(
       bslib::card_body(
-        plotly::plotlyOutput("chart_new_users_over_time", height = "385px")
+        shiny::radioButtons(
+          inputId = "new_users_chart_mode",
+          label = NULL,
+          choices = c("New Users" = "new", "Cumulative" = "cumulative"),
+          selected = "new",
+          inline = TRUE
+        ),
+        plotly::plotlyOutput("chart_new_users_over_time", height = "350px")
       )
     )
   )
