@@ -130,7 +130,7 @@ ui_overview <- bslib::nav_panel(
             "New Users (30d)" = "new30",
             "Core 1 Completions" = "core1"
           ),
-          selected = "total",
+          selected = "new30",
           inline = TRUE
         ),
         plotly::plotlyOutput("chart_country_adoption", height = "350px")
@@ -143,7 +143,7 @@ ui_overview <- bslib::nav_panel(
           inputId = "new_users_chart_mode",
           label = NULL,
           choices = c("New Users" = "new", "Cumulative" = "cumulative"),
-          selected = "new",
+          selected = "cumulative",
           inline = TRUE
         ),
         plotly::plotlyOutput("chart_new_users_over_time", height = "350px")
