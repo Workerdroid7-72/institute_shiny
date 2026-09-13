@@ -353,17 +353,38 @@ server_overview <- function(input, output, session) {
     )
   })
 
-  output$metric_inactive_pct <- shiny::renderUI({
+  # output$metric_inactive_pct <- shiny::renderUI({
+  #   data <- filtered_user_data()
+  #   total_users <- nrow(data)
+  #   if (total_users == 0) {
+  #     return(shiny::tagList("0%", shiny::HTML(delta_spacer_html)))
+  #   }
+  #   inactive_count <- sum(data$is_truly_inactive == TRUE, na.rm = TRUE)
+  #   inactive_pct <- (inactive_count / total_users) * 100
+  #   shiny::tagList(
+  #     paste0(round(inactive_pct, 1), "%"),
+  #     shiny::HTML(delta_spacer_html)
+  #   )
+  # })
+
+  output$metric_level1_certified <- shiny::renderUI({
     data <- filtered_user_data()
-    total_users <- nrow(data)
-    if (total_users == 0) {
-      return(shiny::tagList("0%", shiny::HTML(delta_spacer_html)))
-    }
-    inactive_count <- sum(data$is_truly_inactive == TRUE, na.rm = TRUE)
-    inactive_pct <- (inactive_count / total_users) * 100
+    current <- sum(data$level_1_certified, na.rm = TRUE)
+    cutoff <- lubridate::today() - lubridate::days(30)
+    previous <- sum(
+      !is.na(data$level_1_certified_date) &
+        as.Date(data$level_1_certified_date) < cutoff,
+      na.rm = TRUE
+    )
     shiny::tagList(
-      paste0(round(inactive_pct, 1), "%"),
-      shiny::HTML(delta_spacer_html)
+      formatC(current, format = "d", big.mark = ","),
+      shiny::HTML(
+        if (previous == 0) {
+          delta_spacer_html
+        } else {
+          format_delta_html(current, previous, "growth over last 30 days")
+        }
+      )
     )
   })
 
@@ -390,6 +411,19 @@ server_overview <- function(input, output, session) {
       !is.na(data$core_1_completed_date) &
         as.Date(data$core_1_completed_date) >= cutoff,
       na.rm = TRUE
+    )
+
+    # --- Level 1 Certified ---
+    certified_count <- sum(data$level_1_certified, na.rm = TRUE)
+    certified_pct_of_core1 <- if (core1_total > 0) {
+      round(certified_count / core1_total * 100, 1)
+    } else {
+      0
+    }
+    certified_pct_display <- formatC(
+      certified_pct_of_core1,
+      format = "f",
+      digits = 1
     )
 
     # --- Geographic reach + leader (global view) ---
@@ -421,9 +455,6 @@ server_overview <- function(input, output, session) {
     # --- Activation gap ---
     not_started_count <- sum(data$not_started, na.rm = TRUE)
 
-    # --- Inactivity ---
-    inactive_count <- sum(data$is_truly_inactive == TRUE, na.rm = TRUE)
-
     # --- Build the bullets ---
     bullets <- character(0)
 
@@ -437,6 +468,18 @@ server_overview <- function(input, output, session) {
         formatC(core1_total, format = "d", big.mark = ","),
         core1_pct_display,
         formatC(core1_last30, format = "d", big.mark = ",")
+      )
+    )
+
+    bullets <- c(
+      bullets,
+      sprintf(
+        paste0(
+          "<strong>%s users have earned full Level 1 Certification</strong> ",
+          "— %s%% of everyone who's completed Core 1."
+        ),
+        formatC(certified_count, format = "d", big.mark = ","),
+        certified_pct_display
       )
     )
 
@@ -470,14 +513,6 @@ server_overview <- function(input, output, session) {
           "— a ready-made audience for a re-engagement nudge."
         ),
         formatC(not_started_count, format = "d", big.mark = ",")
-      )
-    )
-
-    bullets <- c(
-      bullets,
-      sprintf(
-        "%s users have gone inactive.",
-        formatC(inactive_count, format = "d", big.mark = ",")
       )
     )
 
@@ -738,6 +773,41 @@ server_overview <- function(input, output, session) {
   # ============================================================================
   # MODALS
   # ============================================================================
+  shiny::observeEvent(input$show_level1_certified, {
+    shiny::showModal(
+      shiny::modalDialog(
+        title = "Level 1 Certified Users",
+        size = "xl",
+        easyClose = TRUE,
+        DT::DTOutput("level1_certified_table"),
+        footer = shiny::modalButton("Close")
+      )
+    )
+  })
+
+  output$level1_certified_table <- DT::renderDT({
+    data <- filtered_user_data()
+    certified <- data %>%
+      dplyr::filter(level_1_certified == TRUE) %>%
+      dplyr::arrange(dplyr::desc(level_1_certified_date))
+
+    display <- data.frame(
+      "Name" = certified$full_name,
+      "User Type" = certified$user_type,
+      "Country" = certified$country_name,
+      "Region" = certified$region_name,
+      "Account Manager" = certified$account_manager_name,
+      "Certified" = certified$level_1_certified_date,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    DT::datatable(
+      display,
+      options = list(pageLength = 15, scrollX = TRUE),
+      rownames = FALSE
+    )
+  })
   shiny::observeEvent(input$show_total_users, {
     shiny::req(input$show_total_users > 0)
     shiny::showModal(

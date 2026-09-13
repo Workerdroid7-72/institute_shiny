@@ -44,6 +44,14 @@ ui_overview <- bslib::nav_panel(
     ),
 
     overview_kpi_card(
+      "Level 1 Certified",
+      "metric_level1_certified",
+      "certificate",
+      "primary",
+      "show_level1_certified"
+    ),
+
+    overview_kpi_card(
       "Total Users",
       "metric_total_users",
       "users",
@@ -73,14 +81,6 @@ ui_overview <- bslib::nav_panel(
       "hourglass-start",
       "dark",
       "show_not_started"
-    ),
-
-    overview_kpi_card(
-      "Inactive Users (%)",
-      "metric_inactive_pct",
-      "user-slash",
-      "danger",
-      "show_inactive"
     )
   ),
 
