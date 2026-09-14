@@ -66,7 +66,11 @@ format_visit_duration_ms <- function(ms) {
 # HELPER: Clean raw page paths into readable labels and categories
 # ==============================================================================
 
-clean_page_paths <- function(raw_paths) {
+clean_page_paths <- function(raw_paths, lesson_names = NULL) {
+  if (is.null(lesson_names)) {
+    lesson_names <- rep(NA_character_, length(raw_paths))
+  }
+
   clean <- sub("^/?logged/", "", raw_paths)
   clean <- sub("^/", "", clean)
 
@@ -84,9 +88,8 @@ clean_page_paths <- function(raw_paths) {
     TRUE ~ "Functional / Admin"
   )
 
-  label <- sapply(
-    clean,
-    function(p) {
+  label <- mapply(
+    function(p, ln) {
       if (is.na(p) || p == "") {
         return("Unknown")
       }
@@ -94,41 +97,56 @@ clean_page_paths <- function(raw_paths) {
       if (grepl("^learning/section/", p)) {
         slug <- sub("^learning/section/", "", p)
         if (grepl("-test$", slug)) {
-          # Assessment page: drop the "-test" suffix, prefix with "Assessment:"
           name <- sub("-test$", "", slug)
-          paste0("Assessment: ", tools::toTitleCase(gsub("-", " ", name)))
+          return(paste0(
+            "Assessment: ",
+            tools::toTitleCase(gsub("-", " ", name))
+          ))
         } else {
-          paste0("Section: ", tools::toTitleCase(gsub("-", " ", slug)))
+          return(paste0("Section: ", tools::toTitleCase(gsub("-", " ", slug))))
         }
       } else if (grepl("^learning/elective/", p)) {
+               # --- NEW: Use the official lesson_name if available ---
+        if (!is.na(ln) && ln != "") {
+          return(paste0("Elective: ", ln))
+        }
+        # Fallback to slug-derived name if no lesson_name exists
         parts <- strsplit(p, "/")[[1]]
         slug <- parts[length(parts)]
-        paste0("Elective: ", tools::toTitleCase(gsub("-", " ", slug)))
+        return(paste0("Elective: ", tools::toTitleCase(gsub("-", " ", slug))))
       } else if (grepl("^learning/module-complete/", p)) {
         slug <- sub("^learning/module-complete/", "", p)
-        paste0("Completed: ", tools::toTitleCase(gsub("-", " ", slug)))
+        return(paste0("Completed: ", tools::toTitleCase(gsub("-", " ", slug))))
       } else if (grepl("^learning/core-complete/", p)) {
         slug <- sub("^learning/core-complete/", "", p)
-        paste0("Completed: Core Level ", slug)
+        return(paste0("Completed: Core Level ", slug))
       } else if (grepl("^dashboard/admin/", p)) {
         slug <- sub("^dashboard/admin/", "", p)
-        paste0("Admin: ", tools::toTitleCase(gsub("[-_]", " ", slug)))
+        return(paste0("Admin: ", tools::toTitleCase(gsub("[-_]", " ", slug))))
       } else if (grepl("^dashboard/regional/", p)) {
         slug <- sub("^dashboard/regional/", "", p)
-        paste0("Regional Admin: ", tools::toTitleCase(gsub("[-_]", " ", slug)))
+        return(paste0(
+          "Regional Admin: ",
+          tools::toTitleCase(gsub("[-_]", " ", slug))
+        ))
       } else if (grepl("^dashboard/owner/", p)) {
         slug <- sub("^dashboard/owner/", "", p)
-        paste0("Owner Admin: ", tools::toTitleCase(gsub("[-_]", " ", slug)))
+        return(paste0(
+          "Owner Admin: ",
+          tools::toTitleCase(gsub("[-_]", " ", slug))
+        ))
       } else if (grepl("^dashboard/stockist/", p)) {
-        "Stockist record detail"
+        return("Stockist record detail")
       } else if (grepl("^dashboard/person/", p)) {
-        "Person record detail"
+        return("Person record detail")
       } else {
         parts <- strsplit(p, "/")[[1]]
         slug <- parts[1]
-        tools::toTitleCase(gsub("[-_]", " ", slug))
+        return(tools::toTitleCase(gsub("[-_]", " ", slug)))
       }
     },
+    clean,
+    lesson_names,
     USE.NAMES = FALSE
   )
 
@@ -143,7 +161,9 @@ clean_page_paths <- function(raw_paths) {
 # Helper: Count the first ("entry") or last ("exit") page of each visit
 # ==============================================================================
 boundary_page_counts <- function(df, type) {
-  cleaned <- clean_page_paths(df$page_path)
+  # Pass lesson_name if it exists in the dataframe
+  ln <- if ("lesson_name" %in% names(df)) df$lesson_name else NULL
+  cleaned <- clean_page_paths(df$page_path, lesson_names = ln)
   df$clean_label <- cleaned$clean_label
 
   boundary <- if (type == "entry") {
@@ -162,7 +182,6 @@ boundary_page_counts <- function(df, type) {
     dplyr::arrange(dplyr::desc(visits)) %>%
     head(10)
 }
-
 
 # ==============================================================================
 # SERVER MODULE: VISITS
@@ -1102,7 +1121,7 @@ server_visits <- function(input, output, session) {
     shiny::req(nrow(df) > 0)
 
     # Apply the cleaning helper
-    cleaned <- clean_page_paths(df$page_path)
+   cleaned <- clean_page_paths(df$page_path, df$lesson_name)
     df$clean_label <- cleaned$clean_label
     df$page_category <- cleaned$page_category
 
@@ -1174,7 +1193,7 @@ server_visits <- function(input, output, session) {
     df <- filtered_page_views()
     shiny::req(nrow(df) > 0)
 
-    cleaned <- clean_page_paths(df$page_path)
+    cleaned <- clean_page_paths(df$page_path, df$lesson_name)
     df$clean_label <- cleaned$clean_label
     df$page_category <- cleaned$page_category
 
@@ -1295,7 +1314,7 @@ server_visits <- function(input, output, session) {
     df <- filtered_page_views()
     shiny::req(nrow(df) > 0)
 
-    cleaned <- clean_page_paths(df$page_path)
+    cleaned <- clean_page_paths(df$page_path, df$lesson_name)
     df$page_category <- cleaned$page_category
 
     selected_category <- input$visits_exit_category
@@ -1351,7 +1370,7 @@ server_visits <- function(input, output, session) {
     df <- filtered_page_views()
     shiny::req(nrow(df) > 0)
 
-    cleaned <- clean_page_paths(df$page_path)
+    cleaned <- clean_page_paths(df$page_path, df$lesson_name)
     df$page_category <- cleaned$page_category
 
     cat_counts <- df %>%
