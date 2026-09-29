@@ -19,7 +19,9 @@ overview_kpi_card <- function(title, output_id, icon_name, theme, button_id) {
       label = NULL,
       icon = shiny::icon("expand"),
       class = "btn-sm",
-      style = "position: absolute; top: 8px; right: 8px; z-index: 100; opacity: 0.7;"
+      # UPDATED STYLE: Crisp white icon with a subtle shadow to pop on dark tiles
+      # and remain visible on the light "Total Users" tile.
+      style = "position: absolute; top: 8px; right: 8px; z-index: 100; background-color: transparent; border: none; color: #ffffff; text-shadow: 0px 1px 3px rgba(0, 0, 0, 0.5); font-size: 1.2rem; opacity: 0.9;"
     )
   )
 }
@@ -51,6 +53,7 @@ ui_overview <- bslib::nav_panel(
       "show_level1_certified"
     ),
 
+    # THIS SHOULD ONLY APPEAR ONCE:
     overview_kpi_card(
       "Total Users",
       "metric_total_users",

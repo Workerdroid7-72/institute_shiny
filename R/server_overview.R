@@ -12,10 +12,11 @@ server_overview <- function(input, output, session) {
       "Name" = full_name,
       "Role" = user_type,
       "Country" = country_name,
-      "Region" = region_name,
+      "Stockist" = stockist_name, # NEW: Added Stockist
       "Account Manager" = account_manager_name,
       "Core 1" = core_1_completed,
       "Last Active" = last_active_date
+      # REMOVED: "Region" = region_name
     )
 
     display_data$"Core 1" <- ifelse(display_data$"Core 1" == TRUE, "Yes", "No")
@@ -26,8 +27,9 @@ server_overview <- function(input, output, session) {
         pageLength = 10,
         scrollX = TRUE,
         columnDefs = list(
+          # Updated targets to account for the new column order
           list(width = '200px', targets = c(0, 4)),
-          list(width = '100px', targets = c(1, 2, 3, 5))
+          list(width = '100px', targets = c(1, 2, 3, 5, 6))
         )
       ),
       rownames = FALSE,
@@ -771,7 +773,7 @@ server_overview <- function(input, output, session) {
   })
 
   # ============================================================================
-  # MODALS
+  # MODALS (Updated with Download Buttons)
   # ============================================================================
   shiny::observeEvent(input$show_level1_certified, {
     shiny::showModal(
@@ -780,7 +782,34 @@ server_overview <- function(input, output, session) {
         size = "xl",
         easyClose = TRUE,
         DT::DTOutput("level1_certified_table"),
-        footer = shiny::modalButton("Close")
+        footer = shiny::tagList(
+          shiny::downloadButton(
+            "download_level1_certified",
+            "Download Excel",
+            class = "btn-success me-auto"
+          ),
+          shiny::modalButton("Close")
+        )
+      )
+    )
+  })
+
+  shiny::observeEvent(input$show_total_users, {
+    shiny::req(input$show_total_users > 0)
+    shiny::showModal(
+      shiny::modalDialog(
+        title = "Users: Total Users",
+        size = "xl",
+        easyClose = TRUE,
+        DT::DTOutput("user_table_total"),
+        footer = shiny::tagList(
+          shiny::downloadButton(
+            "download_total_users",
+            "Download Excel",
+            class = "btn-success me-auto"
+          ),
+          shiny::modalButton("Close")
+        )
       )
     )
   })
@@ -795,9 +824,10 @@ server_overview <- function(input, output, session) {
       "Name" = certified$full_name,
       "User Type" = certified$user_type,
       "Country" = certified$country_name,
-      "Region" = certified$region_name,
+      "Stockist" = certified$stockist_name, # NEW: Added Stockist
       "Account Manager" = certified$account_manager_name,
       "Certified" = certified$level_1_certified_date,
+      # REMOVED: "Region" = certified$region_name
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
@@ -808,6 +838,7 @@ server_overview <- function(input, output, session) {
       rownames = FALSE
     )
   })
+
   shiny::observeEvent(input$show_total_users, {
     shiny::req(input$show_total_users > 0)
     shiny::showModal(
@@ -816,7 +847,14 @@ server_overview <- function(input, output, session) {
         size = "xl",
         easyClose = TRUE,
         DT::DTOutput("user_table_total"),
-        footer = shiny::modalButton("Close")
+        footer = shiny::tagList(
+          shiny::downloadButton(
+            "download_total_users",
+            "Download Excel",
+            class = "btn-success me-auto"
+          ),
+          shiny::modalButton("Close")
+        )
       )
     )
   })
@@ -829,7 +867,14 @@ server_overview <- function(input, output, session) {
         size = "xl",
         easyClose = TRUE,
         DT::DTOutput("user_table_active"),
-        footer = shiny::modalButton("Close")
+        footer = shiny::tagList(
+          shiny::downloadButton(
+            "download_active_users",
+            "Download Excel",
+            class = "btn-success me-auto"
+          ),
+          shiny::modalButton("Close")
+        )
       )
     )
   })
@@ -842,7 +887,14 @@ server_overview <- function(input, output, session) {
         size = "xl",
         easyClose = TRUE,
         DT::DTOutput("user_table_new"),
-        footer = shiny::modalButton("Close")
+        footer = shiny::tagList(
+          shiny::downloadButton(
+            "download_new_users",
+            "Download Excel",
+            class = "btn-success me-auto"
+          ),
+          shiny::modalButton("Close")
+        )
       )
     )
   })
@@ -855,7 +907,14 @@ server_overview <- function(input, output, session) {
         size = "xl",
         easyClose = TRUE,
         DT::DTOutput("user_table_core1"),
-        footer = shiny::modalButton("Close")
+        footer = shiny::tagList(
+          shiny::downloadButton(
+            "download_core1",
+            "Download Excel",
+            class = "btn-success me-auto"
+          ),
+          shiny::modalButton("Close")
+        )
       )
     )
   })
@@ -868,7 +927,14 @@ server_overview <- function(input, output, session) {
         size = "xl",
         easyClose = TRUE,
         DT::DTOutput("user_table_inactive"),
-        footer = shiny::modalButton("Close")
+        footer = shiny::tagList(
+          shiny::downloadButton(
+            "download_inactive",
+            "Download Excel",
+            class = "btn-success me-auto"
+          ),
+          shiny::modalButton("Close")
+        )
       )
     )
   })
@@ -881,7 +947,14 @@ server_overview <- function(input, output, session) {
         size = "xl",
         easyClose = TRUE,
         DT::DTOutput("user_table_not_started"),
-        footer = shiny::modalButton("Close")
+        footer = shiny::tagList(
+          shiny::downloadButton(
+            "download_not_started",
+            "Download Excel",
+            class = "btn-success me-auto"
+          ),
+          shiny::modalButton("Close")
+        )
       )
     )
   })
@@ -925,4 +998,186 @@ server_overview <- function(input, output, session) {
     metric_data <- dplyr::filter(data, not_started == TRUE)
     create_user_table(metric_data)
   })
+
+  output$user_table_total <- DT::renderDT({
+    data <- filtered_user_data()
+    create_user_table(data)
+  })
+
+  # ============================================================================
+  # DOWNLOAD HANDLERS (Excel Exports)
+  # ============================================================================
+
+  # Helper to write excel
+  write_excel <- function(data, file) {
+    writexl::write_xlsx(data, file)
+  }
+
+  output$download_level1_certified <- shiny::downloadHandler(
+    filename = function() {
+      paste("Level_1_Certified_", Sys.Date(), ".xlsx", sep = "")
+    },
+    content = function(file) {
+      data <- filtered_user_data() %>% dplyr::filter(level_1_certified == TRUE)
+      export_data <- data.frame(
+        "Name" = data$full_name,
+        "User Type" = data$user_type,
+        "Country" = data$country_name,
+        "Stockist" = data$stockist_name,
+        "Account Manager" = data$account_manager_name,
+        "Certified" = data$level_1_certified_date,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      write_excel(export_data, file)
+    }
+  )
+
+  output$download_total_users <- shiny::downloadHandler(
+    filename = function() paste("Total_Users_", Sys.Date(), ".xlsx", sep = ""),
+    content = function(file) {
+      data <- filtered_user_data()
+      export_data <- data.frame(
+        "Name" = data$full_name,
+        "Role" = data$user_type,
+        "Country" = data$country_name,
+        "Stockist" = data$stockist_name,
+        "Account Manager" = data$account_manager_name,
+        "Core 1" = ifelse(data$core_1_completed == TRUE, "Yes", "No"),
+        "Last Active" = data$last_active_date,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      write_excel(export_data, file)
+    }
+  )
+
+  output$download_active_users <- shiny::downloadHandler(
+    filename = function() {
+      paste("Active_Users_30d_", Sys.Date(), ".xlsx", sep = "")
+    },
+    content = function(file) {
+      data <- filtered_user_data()
+      cutoff_date <- lubridate::today() - lubridate::days(30)
+      data <- dplyr::filter(data, last_active_date >= cutoff_date)
+      export_data <- data.frame(
+        "Name" = data$full_name,
+        "Role" = data$user_type,
+        "Country" = data$country_name,
+        "Stockist" = data$stockist_name,
+        "Account Manager" = data$account_manager_name,
+        "Core 1" = ifelse(data$core_1_completed == TRUE, "Yes", "No"),
+        "Last Active" = data$last_active_date,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      write_excel(export_data, file)
+    }
+  )
+
+  output$download_new_users <- shiny::downloadHandler(
+    filename = function() {
+      paste("New_Users_30d_", Sys.Date(), ".xlsx", sep = "")
+    },
+    content = function(file) {
+      data <- filtered_user_data()
+      cutoff_date <- lubridate::today() - lubridate::days(30)
+      data <- dplyr::filter(data, as.Date(date_registered) >= cutoff_date)
+      export_data <- data.frame(
+        "Name" = data$full_name,
+        "Role" = data$user_type,
+        "Country" = data$country_name,
+        "Stockist" = data$stockist_name,
+        "Account Manager" = data$account_manager_name,
+        "Core 1" = ifelse(data$core_1_completed == TRUE, "Yes", "No"),
+        "Last Active" = data$last_active_date,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      write_excel(export_data, file)
+    }
+  )
+
+  output$download_core1 <- shiny::downloadHandler(
+    filename = function() {
+      paste("Core_1_Completed_", Sys.Date(), ".xlsx", sep = "")
+    },
+    content = function(file) {
+      data <- filtered_user_data()
+      data <- dplyr::filter(data, core_1_completed == TRUE)
+      export_data <- data.frame(
+        "Name" = data$full_name,
+        "Role" = data$user_type,
+        "Country" = data$country_name,
+        "Stockist" = data$stockist_name,
+        "Account Manager" = data$account_manager_name,
+        "Core 1" = "Yes", # Hardcoded since it's already filtered
+        "Last Active" = data$last_active_date,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      write_excel(export_data, file)
+    }
+  )
+
+  output$download_inactive <- shiny::downloadHandler(
+    filename = function() {
+      paste("Inactive_Users_", Sys.Date(), ".xlsx", sep = "")
+    },
+    content = function(file) {
+      data <- filtered_user_data()
+      data <- dplyr::filter(data, is_truly_inactive == TRUE)
+      export_data <- data.frame(
+        "Name" = data$full_name,
+        "Role" = data$user_type,
+        "Country" = data$country_name,
+        "Stockist" = data$stockist_name,
+        "Account Manager" = data$account_manager_name,
+        "Core 1" = ifelse(data$core_1_completed == TRUE, "Yes", "No"),
+        "Last Active" = data$last_active_date,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      write_excel(export_data, file)
+    }
+  )
+
+  output$download_not_started <- shiny::downloadHandler(
+    filename = function() paste("Not_Started_", Sys.Date(), ".xlsx", sep = ""),
+    content = function(file) {
+      data <- filtered_user_data()
+      data <- dplyr::filter(data, not_started == TRUE)
+      export_data <- data.frame(
+        "Name" = data$full_name,
+        "Role" = data$user_type,
+        "Country" = data$country_name,
+        "Stockist" = data$stockist_name,
+        "Account Manager" = data$account_manager_name,
+        "Core 1" = "No", # Hardcoded since it's already filtered
+        "Last Active" = data$last_active_date,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      write_excel(export_data, file)
+    }
+  )
+
+  output$download_total_users <- shiny::downloadHandler(
+    filename = function() paste("Total_Users_", Sys.Date(), ".xlsx", sep = ""),
+    content = function(file) {
+      data <- filtered_user_data()
+      export_data <- data.frame(
+        "Name" = data$full_name,
+        "Role" = data$user_type,
+        "Country" = data$country_name,
+        "Stockist" = data$stockist_name,
+        "Account Manager" = data$account_manager_name,
+        "Core 1" = ifelse(data$core_1_completed == TRUE, "Yes", "No"),
+        "Last Active" = data$last_active_date,
+        check.names = FALSE,
+        stringsAsFactors = FALSE
+      )
+      writexl::write_xlsx(export_data, file)
+    }
+  )
 }
