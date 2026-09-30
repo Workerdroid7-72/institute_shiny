@@ -68,25 +68,56 @@ dashboard_ui <- bslib::page_navbar(
   ),
 
   header = shiny::tagList(
-    shiny::tags$head(shiny::tags$style(shiny::HTML(
+    shiny::tags$head(
+      # --- YOUR EXISTING CSS ---
+      shiny::tags$style(shiny::HTML(
+        "
+        #app-loading-overlay {
+          display: none;
+          position: fixed;
+          inset: 0;
+          background: rgba(255, 255, 255, 0.65);
+          z-index: 9999;
+          align-items: center;
+          justify-content: center;
+          opacity: 0;
+        }
+        .shiny-busy #app-loading-overlay {
+          display: flex;
+          animation: appOverlayIn 0s forwards 0.5s;
+        }
+        @keyframes appOverlayIn { to { opacity: 1; } }
       "
-      #app-loading-overlay {
-        display: none;
-        position: fixed;
-        inset: 0;
-        background: rgba(255, 255, 255, 0.65);
-        z-index: 9999;
-        align-items: center;
-        justify-content: center;
-        opacity: 0;
-      }
-      .shiny-busy #app-loading-overlay {
-        display: flex;
-        animation: appOverlayIn 0s forwards 0.5s;
-      }
-      @keyframes appOverlayIn { to { opacity: 1; } }
-    "
-    ))),
+      )),
+
+      # --- NUCLEAR SCROLL FIX: MutationObserver ---
+      shiny::tags$script(shiny::HTML(
+        "
+        $(document).ready(function() {
+          const observer = new MutationObserver(function(mutations) {
+            mutations.forEach(function(mutation) {
+              if (mutation.type === 'attributes' && mutation.attributeName === 'style') {
+                const body = document.body;
+                // If modal-open class is gone, force-remove overflow:hidden
+                if (!body.classList.contains('modal-open')) {
+                  body.style.overflow = '';
+                  body.style.paddingRight = '';
+                }
+              }
+            });
+          });
+          
+          // Watch the body's style attribute for any changes
+          observer.observe(document.body, { 
+            attributes: true, 
+            attributeFilter: ['style', 'class'] 
+          });
+        });
+      "
+      ))
+    ),
+
+    # --- YOUR EXISTING LOADING OVERLAY ---
     shiny::tags$div(
       id = "app-loading-overlay",
       shiny::tags$div(

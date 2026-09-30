@@ -355,20 +355,6 @@ server_overview <- function(input, output, session) {
     )
   })
 
-  # output$metric_inactive_pct <- shiny::renderUI({
-  #   data <- filtered_user_data()
-  #   total_users <- nrow(data)
-  #   if (total_users == 0) {
-  #     return(shiny::tagList("0%", shiny::HTML(delta_spacer_html)))
-  #   }
-  #   inactive_count <- sum(data$is_truly_inactive == TRUE, na.rm = TRUE)
-  #   inactive_pct <- (inactive_count / total_users) * 100
-  #   shiny::tagList(
-  #     paste0(round(inactive_pct, 1), "%"),
-  #     shiny::HTML(delta_spacer_html)
-  #   )
-  # })
-
   output$metric_level1_certified <- shiny::renderUI({
     data <- filtered_user_data()
     current <- sum(data$level_1_certified, na.rm = TRUE)
@@ -535,7 +521,12 @@ server_overview <- function(input, output, session) {
   # ============================================================================
   output$chart_new_users_over_time <- plotly::renderPlotly({
     data <- filtered_user_data()
-    shiny::req(nrow(data) > 0)
+    shiny::validate(
+      shiny::need(
+        nrow(data) > 0,
+        "No user data available for the selected filters."
+      )
+    )
 
     # Monthly NEW registrations by user type
     monthly_new <- data %>%
@@ -649,7 +640,12 @@ server_overview <- function(input, output, session) {
   output$chart_core1_over_time <- plotly::renderPlotly({
     data <- filtered_user_data()
     data <- dplyr::filter(data, !is.na(core_1_completed_date))
-    shiny::req(nrow(data) > 0)
+    shiny::validate(
+      shiny::need(
+        nrow(data) > 0,
+        "No Core 1 completion data available for the selected filters."
+      )
+    )
 
     # Month each user completed Core 1
     data <- data %>%
@@ -715,9 +711,9 @@ server_overview <- function(input, output, session) {
 
   output$chart_country_adoption <- plotly::renderPlotly({
     data <- country_chart_data()
-    shiny::req(nrow(data) > 0)
-
-    metric <- input$country_chart_metric
+    shiny::validate(
+      shiny::need(nrow(data) > 0, "No data available for the selected filters.")
+    )
 
     metric <- input$country_chart_metric
 
@@ -735,7 +731,12 @@ server_overview <- function(input, output, session) {
       y_label <- "Total Users"
     }
 
-    shiny::req(nrow(data) > 0)
+    shiny::validate(
+      shiny::need(
+        nrow(data) > 0,
+        "No data available for the selected metric and filters."
+      )
+    )
 
     country_counts <- data %>%
       dplyr::count(country_name, name = "count") %>%
@@ -773,9 +774,11 @@ server_overview <- function(input, output, session) {
   })
 
   # ============================================================================
-  # MODALS (Updated with Download Buttons)
+  # MODALS (Fixed: Removed duplicates, added req() to all)
   # ============================================================================
+
   shiny::observeEvent(input$show_level1_certified, {
+    shiny::req(input$show_level1_certified > 0) # ADDED
     shiny::showModal(
       shiny::modalDialog(
         title = "Level 1 Certified Users",
@@ -801,6 +804,7 @@ server_overview <- function(input, output, session) {
         title = "Users: Total Users",
         size = "xl",
         easyClose = TRUE,
+        fade = FALSE, # <--- ADD THIS LINE
         DT::DTOutput("user_table_total"),
         footer = shiny::tagList(
           shiny::downloadButton(
@@ -813,51 +817,7 @@ server_overview <- function(input, output, session) {
       )
     )
   })
-
-  output$level1_certified_table <- DT::renderDT({
-    data <- filtered_user_data()
-    certified <- data %>%
-      dplyr::filter(level_1_certified == TRUE) %>%
-      dplyr::arrange(dplyr::desc(level_1_certified_date))
-
-    display <- data.frame(
-      "Name" = certified$full_name,
-      "User Type" = certified$user_type,
-      "Country" = certified$country_name,
-      "Stockist" = certified$stockist_name, # NEW: Added Stockist
-      "Account Manager" = certified$account_manager_name,
-      "Certified" = certified$level_1_certified_date,
-      # REMOVED: "Region" = certified$region_name
-      check.names = FALSE,
-      stringsAsFactors = FALSE
-    )
-
-    DT::datatable(
-      display,
-      options = list(pageLength = 15, scrollX = TRUE),
-      rownames = FALSE
-    )
-  })
-
-  shiny::observeEvent(input$show_total_users, {
-    shiny::req(input$show_total_users > 0)
-    shiny::showModal(
-      shiny::modalDialog(
-        title = "Users: Total Users",
-        size = "xl",
-        easyClose = TRUE,
-        DT::DTOutput("user_table_total"),
-        footer = shiny::tagList(
-          shiny::downloadButton(
-            "download_total_users",
-            "Download Excel",
-            class = "btn-success me-auto"
-          ),
-          shiny::modalButton("Close")
-        )
-      )
-    )
-  })
+  # NOTE: I deleted the second duplicate observeEvent for show_total_users that was further down in your code!
 
   shiny::observeEvent(input$show_active_users, {
     shiny::req(input$show_active_users > 0)
@@ -910,26 +870,6 @@ server_overview <- function(input, output, session) {
         footer = shiny::tagList(
           shiny::downloadButton(
             "download_core1",
-            "Download Excel",
-            class = "btn-success me-auto"
-          ),
-          shiny::modalButton("Close")
-        )
-      )
-    )
-  })
-
-  shiny::observeEvent(input$show_inactive, {
-    shiny::req(input$show_inactive > 0)
-    shiny::showModal(
-      shiny::modalDialog(
-        title = "Users: Inactive Users",
-        size = "xl",
-        easyClose = TRUE,
-        DT::DTOutput("user_table_inactive"),
-        footer = shiny::tagList(
-          shiny::downloadButton(
-            "download_inactive",
             "Download Excel",
             class = "btn-success me-auto"
           ),
@@ -999,9 +939,28 @@ server_overview <- function(input, output, session) {
     create_user_table(metric_data)
   })
 
-  output$user_table_total <- DT::renderDT({
+  output$level1_certified_table <- DT::renderDT({
     data <- filtered_user_data()
-    create_user_table(data)
+    certified <- data %>%
+      dplyr::filter(level_1_certified == TRUE) %>%
+      dplyr::arrange(dplyr::desc(level_1_certified_date))
+
+    display <- data.frame(
+      "Name" = certified$full_name,
+      "User Type" = certified$user_type,
+      "Country" = certified$country_name,
+      "Stockist" = certified$stockist_name,
+      "Account Manager" = certified$account_manager_name,
+      "Certified" = certified$level_1_certified_date,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    DT::datatable(
+      display,
+      options = list(pageLength = 15, scrollX = TRUE),
+      rownames = FALSE
+    )
   })
 
   # ============================================================================
@@ -1159,25 +1118,6 @@ server_overview <- function(input, output, session) {
         stringsAsFactors = FALSE
       )
       write_excel(export_data, file)
-    }
-  )
-
-  output$download_total_users <- shiny::downloadHandler(
-    filename = function() paste("Total_Users_", Sys.Date(), ".xlsx", sep = ""),
-    content = function(file) {
-      data <- filtered_user_data()
-      export_data <- data.frame(
-        "Name" = data$full_name,
-        "Role" = data$user_type,
-        "Country" = data$country_name,
-        "Stockist" = data$stockist_name,
-        "Account Manager" = data$account_manager_name,
-        "Core 1" = ifelse(data$core_1_completed == TRUE, "Yes", "No"),
-        "Last Active" = data$last_active_date,
-        check.names = FALSE,
-        stringsAsFactors = FALSE
-      )
-      writexl::write_xlsx(export_data, file)
     }
   )
 }
