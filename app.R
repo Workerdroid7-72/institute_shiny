@@ -17,6 +17,8 @@ source("R/ui_electives.R")
 source("R/server_electives.R")
 source("R/ui_certifications.R")
 source("R/server_certifications.R")
+source("R/ui_leaderboard.R")
+source("R/server_leaderboard.R")
 
 
 # ==============================================================================
@@ -135,6 +137,7 @@ dashboard_ui <- bslib::page_navbar(
   # Tabs
   ui_overview,
   ui_certifications,
+  ui_leaderboard,
   ui_visits,
   ui_electives,
   ui_characteristics,
@@ -159,6 +162,8 @@ dashboard_server <- function(input, output, session) {
   server_electives(input, output, session)
   #certifications tab
   server_certifications(input, output, session)
+  #leaderboard tab
+  server_leaderboard(input, output, session)
 }
 
 
