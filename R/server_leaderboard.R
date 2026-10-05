@@ -57,6 +57,77 @@ server_leaderboard <- function(input, output, session) {
   })
 
   # --------------------------------------------------------------------------
+  # REACTIVE: Count of ALL approved users (baseline population)
+  # --------------------------------------------------------------------------
+  total_user_count <- shiny::reactive({
+    # Query the total number of approved users, respecting global filters
+    df <- DBI::dbGetQuery(
+      con,
+      "
+      SELECT 
+          u.user_id,
+          COALESCE(r.region_name, 'Unassigned Region') AS region_name,
+          COALESCE(c.country_name, 'Unknown Country') AS country_name,
+          COALESCE(jt.extra_info, 'Unknown Role') AS user_type,
+          COALESCE((am.fname || ' ') || am.lname, 'None / Company Staff') AS account_manager_name
+      FROM z_institute_users u
+      LEFT JOIN z_institute_lookup_job_title jt ON u.job_id = jt.job_id
+      LEFT JOIN z_institute_lookup_region r ON u.region_id = r.region_id
+      LEFT JOIN z_institute_lookup_country c ON r.country_id = c.country_id
+      LEFT JOIN z_institute_users am ON u.account_manager = am.user_id
+      WHERE u.date_approved IS NOT NULL 
+        AND u.password IS NOT NULL 
+        AND u.date_registered >= '2026-03-01 00:00:00'
+      "
+    )
+
+    # Apply the same filters as the leaderboard
+    if (
+      !is.null(input$filter_country) &&
+        input$filter_country != "" &&
+        input$filter_country != "All"
+    ) {
+      df <- dplyr::filter(df, country_name == input$filter_country)
+    }
+    if (
+      !is.null(input$filter_region) &&
+        input$filter_region != "" &&
+        input$filter_region != "All"
+    ) {
+      df <- dplyr::filter(df, region_name == input$filter_region)
+    }
+    if (
+      !is.null(input$filter_user_type) &&
+        input$filter_user_type != "" &&
+        input$filter_user_type != "All"
+    ) {
+      df <- dplyr::filter(df, user_type == input$filter_user_type)
+    }
+    if (
+      !is.null(input$filter_account_mgr) &&
+        input$filter_account_mgr != "" &&
+        input$filter_account_mgr != "All"
+    ) {
+      if ("account_manager_name" %in% names(df)) {
+        if (input$filter_account_mgr == "None / Company Staff") {
+          df <- dplyr::filter(
+            df,
+            is.na(account_manager_name) |
+              account_manager_name == "None / Company Staff"
+          )
+        } else {
+          df <- dplyr::filter(
+            df,
+            account_manager_name == input$filter_account_mgr
+          )
+        }
+      }
+    }
+
+    nrow(df)
+  })
+
+  # --------------------------------------------------------------------------
   # REACTIVE: Calculate GRAND TOTAL points per user (across all levels)
   # --------------------------------------------------------------------------
   leaderboard_total <- shiny::reactive({
@@ -162,7 +233,7 @@ server_leaderboard <- function(input, output, session) {
   })
 
   output$stat_active_users <- shiny::renderText({
-    formatC(nrow(current_leaderboard()), format = "d", big.mark = ",")
+    formatC(total_user_count(), format = "d", big.mark = ",")
   })
 
   output$stat_avg_points <- shiny::renderText({
