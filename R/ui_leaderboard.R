@@ -2,33 +2,53 @@ ui_leaderboard <- bslib::nav_panel(
   title = "Leaderboard",
   icon = shiny::icon("trophy"),
 
-  # 1. Summary Statistics (Value Boxes)
+    # 1. Summary Statistics (Value Boxes)
   bslib::layout_column_wrap(
-    width = 1 / 4,
+    width = 1/5,  # Changed from 1/4 to 1/5 to accommodate 5 tiles
     heights_equal = "all",
     bslib::value_box(
-      "Total Points Awarded",
-      shiny::textOutput("stat_total_points"),
+      "Total Points Awarded", 
+      shiny::textOutput("stat_total_points"), 
       showcase = shiny::icon("star"),
-      theme = "bg-primary" # Uses your app's primary blue (#0d6efd)
+      theme = "bg-primary"
     ),
     bslib::value_box(
-      "Active Users",
-      shiny::textOutput("stat_active_users"),
+      "Active Users", 
+      shiny::textOutput("stat_active_users"), 
       showcase = shiny::icon("users"),
-      theme = "bg-success" # Green
+      theme = "bg-success"
     ),
     bslib::value_box(
-      "Avg Points / User",
-      shiny::textOutput("stat_avg_points"),
+      "Users with ZERO Points", 
+      shiny::textOutput("stat_zero_points"), 
+      showcase = shiny::icon("ban"),
+      theme = "bg-secondary"
+    ),
+    bslib::value_box(
+      "Avg Points / User", 
+      shiny::textOutput("stat_avg_points"), 
       showcase = shiny::icon("chart-line"),
-      theme = "bg-info" # Cyan/Teal
+      theme = "bg-info"
     ),
     bslib::value_box(
-      "Top Score",
-      shiny::textOutput("stat_top_score"),
+      "Top Score", 
+      shiny::textOutput("stat_top_score"), 
       showcase = shiny::icon("crown"),
-      theme = "bg-warning" # Orange/Yellow
+      theme = "bg-warning"
+    )
+  ),
+  
+  # Add toggle to include/exclude zero-point users
+  bslib::card(
+    bslib::card_body(
+      shiny::div(
+        style = "padding: 10px 15px;",
+        shiny::checkboxInput(
+          "include_zero_points",
+          "Include users with ZERO points in calculations and rankings",
+          value = TRUE
+        )
+      )
     )
   ),
 

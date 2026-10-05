@@ -128,12 +128,33 @@ server_leaderboard <- function(input, output, session) {
   })
 
   # --------------------------------------------------------------------------
+  # REACTIVE: Count of users with ZERO points
+  # --------------------------------------------------------------------------
+  zero_points_count <- shiny::reactive({
+    df <- leaderboard_data()
+
+    # Group by user and calculate totals
+    user_totals <- df %>%
+      dplyr::group_by(user_id) %>%
+      dplyr::summarise(
+        total_core = sum(core_points, na.rm = TRUE),
+        total_elective = max(true_total_elective, na.rm = TRUE),
+        grand_total = total_core + total_elective,
+        .groups = "drop"
+      )
+
+    # Count users with 0 total points
+    sum(user_totals$grand_total == 0, na.rm = TRUE)
+  })
+
+  # --------------------------------------------------------------------------
   # REACTIVE: Calculate GRAND TOTAL points per user (across all levels)
+  # Now respects the include_zero_points toggle
   # --------------------------------------------------------------------------
   leaderboard_total <- shiny::reactive({
     df <- leaderboard_data()
 
-    df %>%
+    user_totals <- df %>%
       dplyr::group_by(
         user_id,
         full_name,
@@ -143,29 +164,33 @@ server_leaderboard <- function(input, output, session) {
         account_manager_name
       ) %>%
       dplyr::summarise(
-        # Sum core points across all levels (assuming core doesn't rollover)
         total_core = sum(core_points, na.rm = TRUE),
-        # Take the MAX of true_total_elective. Because it's only populated on
-        # the highest level row, MAX() safely grabs the true cumulative total!
         total_elective = max(true_total_elective, na.rm = TRUE),
         grand_total = total_core + total_elective,
         .groups = "drop"
-      ) %>%
+      )
+
+    # Filter out zero-point users if checkbox is unchecked
+    if (!input$include_zero_points) {
+      user_totals <- user_totals %>% dplyr::filter(grand_total > 0)
+    }
+
+    user_totals %>%
       dplyr::arrange(dplyr::desc(grand_total)) %>%
       dplyr::mutate(rank = dplyr::row_number())
   })
 
   # --------------------------------------------------------------------------
   # REACTIVE: Calculate points for a SPECIFIC level
+  # Now respects the include_zero_points toggle
   # --------------------------------------------------------------------------
   leaderboard_level <- shiny::reactive({
     shiny::req(input$leaderboard_view)
     lvl <- as.integer(input$leaderboard_view)
     df <- leaderboard_data()
 
-    df %>%
-      dplyr::filter(level_id == lvl) %>% # Only users who have started this level
-      # For individual levels, we use the display_elective_points column
+    level_data <- df %>%
+      dplyr::filter(level_id == lvl) %>%
       dplyr::mutate(level_total = core_points + display_elective_points) %>%
       dplyr::select(
         user_id,
@@ -175,11 +200,18 @@ server_leaderboard <- function(input, output, session) {
         core_points,
         display_elective_points,
         level_total
-      ) %>%
+      )
+
+    # Filter out zero-point users if checkbox is unchecked
+    if (!input$include_zero_points) {
+      level_data <- level_data %>% dplyr::filter(level_total > 0)
+    }
+
+    level_data %>%
       dplyr::arrange(dplyr::desc(level_total)) %>%
       dplyr::mutate(rank = dplyr::row_number())
   })
-
+  
   # --------------------------------------------------------------------------
   # REACTIVE: The final table data based on the radio button selection
   # --------------------------------------------------------------------------
@@ -234,6 +266,10 @@ server_leaderboard <- function(input, output, session) {
 
   output$stat_active_users <- shiny::renderText({
     formatC(total_user_count(), format = "d", big.mark = ",")
+  })
+
+  output$stat_zero_points <- shiny::renderText({
+    formatC(zero_points_count(), format = "d", big.mark = ",")
   })
 
   output$stat_avg_points <- shiny::renderText({
