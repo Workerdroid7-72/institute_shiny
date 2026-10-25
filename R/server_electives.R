@@ -1124,4 +1124,186 @@ server_electives <- function(input, output, session) {
 
     plotly::ggplotly(p)
   })
+
+  # ==========================================================================
+  # SERVER: Electives KPI Drill-Down Modals
+  # ==========================================================================
+
+  # --- 1. Unique Learners Modal ---
+  shiny::observeEvent(input$btn_electives_unique_learners, {
+    shiny::showModal(shiny::modalDialog(
+      title = "Unique Learners Detail",
+      size = "xl",
+      easyClose = TRUE,
+      DT::DTOutput("dt_electives_unique_learners"),
+      footer = shiny::modalButton("Close")
+    ))
+  })
+
+  output$dt_electives_unique_learners <- DT::renderDT({
+    df <- elective_page_views()
+    shiny::req(nrow(df) > 0)
+
+    df$elective_name <- extract_elective_name(df$page_path)
+    df <- df %>% dplyr::filter(elective_name != "Unknown")
+    shiny::req(nrow(df) > 0)
+
+    has_name <- "full_name" %in% names(df)
+
+    if (has_name) {
+      user_summary <- df %>%
+        dplyr::group_by(user_id, full_name) %>%
+        dplyr::summarise(
+          user_type = dplyr::first(user_type),
+          country_name = dplyr::first(country_name),
+          account_manager_name = dplyr::first(account_manager_name),
+          elective_views = dplyr::n(),
+          electives_accessed = dplyr::n_distinct(elective_name),
+          total_time_ms = sum(time_spent_ms, na.rm = TRUE),
+          .groups = "drop"
+        )
+    } else {
+      user_summary <- df %>%
+        dplyr::group_by(user_id) %>%
+        dplyr::summarise(
+          user_type = dplyr::first(user_type),
+          country_name = dplyr::first(country_name),
+          account_manager_name = dplyr::first(account_manager_name),
+          elective_views = dplyr::n(),
+          electives_accessed = dplyr::n_distinct(elective_name),
+          total_time_ms = sum(time_spent_ms, na.rm = TRUE),
+          .groups = "drop"
+        )
+    }
+
+    user_summary <- user_summary %>% dplyr::arrange(dplyr::desc(elective_views))
+
+    display <- data.frame(
+      "Name" = if (has_name) {
+        user_summary$full_name
+      } else {
+        as.character(user_summary$user_id)
+      },
+      "User Type" = user_summary$user_type,
+      "Country" = user_summary$country_name,
+      "Account Manager" = user_summary$account_manager_name,
+      "Elective Views" = user_summary$elective_views,
+      "Electives Accessed" = user_summary$electives_accessed,
+      "Total Time" = sapply(user_summary$total_time_ms, format_duration),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    DT::datatable(
+      display,
+      options = list(pageLength = 15, scrollX = TRUE),
+      rownames = FALSE,
+      filter = "top"
+    )
+  })
+
+  # --- 2. Total Completions Modal ---
+  shiny::observeEvent(input$btn_electives_total_completions, {
+    shiny::showModal(shiny::modalDialog(
+      title = "Total Completions Detail",
+      size = "xl",
+      easyClose = TRUE,
+      DT::DTOutput("dt_electives_total_completions"),
+      footer = shiny::modalButton("Close")
+    ))
+  })
+
+  output$dt_electives_total_completions <- DT::renderDT({
+    df <- elective_completions()
+    shiny::req(nrow(df) > 0)
+
+    display <- df %>%
+      dplyr::select(
+        full_name,
+        user_type,
+        country_name,
+        account_manager_name,
+        elective_name,
+        date_completed,
+        time_to_complete_seconds
+      ) %>%
+      dplyr::arrange(dplyr::desc(date_completed)) %>%
+      dplyr::mutate(
+        `Completion Date` = as.Date(date_completed),
+        `Time to Complete` = sapply(time_to_complete_seconds, function(s) {
+          if (is.na(s)) {
+            return("N/A")
+          }
+          hours <- floor(s / 3600)
+          mins <- floor((s %% 3600) / 60)
+          if (hours > 0) paste0(hours, "h ", mins, "m") else paste0(mins, "m")
+        })
+      ) %>%
+      dplyr::select(
+        `Name` = full_name,
+        `User Type` = user_type,
+        `Country` = country_name,
+        `Account Manager` = account_manager_name,
+        `Elective` = elective_name,
+        `Completion Date`,
+        `Time to Complete`
+      )
+
+    DT::datatable(
+      display,
+      options = list(
+        pageLength = 15,
+        scrollX = TRUE,
+        order = list(list(5, 'desc'))
+      ),
+      rownames = FALSE,
+      filter = "top"
+    )
+  })
+
+  # --- 3. Unique Completers Modal ---
+  shiny::observeEvent(input$btn_electives_unique_completers, {
+    shiny::showModal(shiny::modalDialog(
+      title = "Unique Completers Detail",
+      size = "xl",
+      easyClose = TRUE,
+      DT::DTOutput("dt_electives_unique_completers"),
+      footer = shiny::modalButton("Close")
+    ))
+  })
+
+  output$dt_electives_unique_completers <- DT::renderDT({
+    df <- elective_completions()
+    shiny::req(nrow(df) > 0)
+
+    user_summary <- df %>%
+      dplyr::group_by(user_id, full_name) %>%
+      dplyr::summarise(
+        user_type = dplyr::first(user_type),
+        country_name = dplyr::first(country_name),
+        account_manager_name = dplyr::first(account_manager_name),
+        total_completions = dplyr::n(),
+        last_completed = max(date_completed, na.rm = TRUE),
+        .groups = "drop"
+      ) %>%
+      dplyr::arrange(dplyr::desc(total_completions))
+
+    display <- data.frame(
+      "Name" = user_summary$full_name,
+      "User Type" = user_summary$user_type,
+      "Country" = user_summary$country_name,
+      "Account Manager" = user_summary$account_manager_name,
+      "Total Completions" = user_summary$total_completions,
+      "Most Recent Completion" = as.Date(user_summary$last_completed),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    DT::datatable(
+      display,
+      options = list(pageLength = 15, scrollX = TRUE),
+      rownames = FALSE,
+      filter = "top"
+    )
+  })
 }

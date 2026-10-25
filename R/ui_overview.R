@@ -17,7 +17,7 @@ overview_kpi_card <- function(title, output_id, icon_name, theme, button_id) {
     shiny::actionButton(
       button_id,
       label = NULL,
-      icon = shiny::icon("expand"),
+      icon = shiny::icon("magnifying-glass-chart"),
       class = "btn-sm",
       # UPDATED STYLE: Crisp white icon with a subtle shadow to pop on dark tiles
       # and remain visible on the light "Total Users" tile.

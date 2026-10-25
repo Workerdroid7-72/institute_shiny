@@ -2,6 +2,40 @@
 # UI: Electives Tab
 # ============================================================================
 
+# Helper for plain KPI cards (no button, but same wrapper structure for consistent sizing)
+electives_kpi_card_plain <- function(title, output_id, icon_name, theme) {
+  htmltools::div(
+    style = "position: relative; width: 100%; height: 100%;",
+    bslib::value_box(
+      title = title,
+      value = shiny::textOutput(output_id),
+      showcase = shiny::icon(icon_name),
+      theme = theme
+    )
+  )
+}
+
+# Helper function for Electives KPI cards with drill-down button
+electives_kpi_card <- function(title, output_id, icon_name, theme, button_id) {
+  htmltools::div(
+    style = "position: relative; width: 100%; height: 100%;",
+    bslib::value_box(
+      title = title,
+      value = shiny::textOutput(output_id), # Kept as textOutput to match your original
+      showcase = shiny::icon(icon_name),
+      theme = theme
+    ),
+    shiny::actionButton(
+      button_id,
+      label = NULL,
+      icon = shiny::icon("magnifying-glass-chart"), # Updated icon
+      class = "btn-sm",
+      # Exact same styling as your overview tab for consistency
+      style = "position: absolute; top: 8px; right: 8px; z-index: 100; background-color: transparent; border: none; color: #ffffff; text-shadow: 0px 1px 3px rgba(0, 0, 0, 0.5); font-size: 1.2rem; opacity: 0.9;"
+    )
+  )
+}
+
 ui_electives <- bslib::nav_panel(
   title = "Electives",
   icon = shiny::icon("book-open"),
@@ -11,28 +45,34 @@ ui_electives <- bslib::nav_panel(
     width = 1 / 4,
     heights_equal = "all",
 
-    bslib::value_box(
+    # Total Elective Views (UPDATED)
+    electives_kpi_card_plain(
       title = "Total Elective Views",
-      value = shiny::textOutput("electives_total_views"),
-      showcase = shiny::icon("eye"),
+      output_id = "electives_total_views",
+      icon_name = "eye",
       theme = "primary"
     ),
-    bslib::value_box(
+    # Unique Learners (UPDATED)
+    electives_kpi_card(
       title = "Unique Learners",
-      value = shiny::textOutput("electives_unique_learners"),
-      showcase = shiny::icon("users"),
-      theme = "success"
+      output_id = "electives_unique_learners",
+      icon_name = "users",
+      theme = "success",
+      button_id = "btn_electives_unique_learners"
     ),
-    bslib::value_box(
+    # Electives Accessed (UPDATED)
+    electives_kpi_card_plain(
       title = "Electives Accessed",
-      value = shiny::textOutput("electives_courses_accessed"),
-      showcase = shiny::icon("book-open"),
+      output_id = "electives_courses_accessed",
+      icon_name = "book-open",
       theme = "info"
     ),
-    bslib::value_box(
+
+    # Median Time per View (UPDATED)
+    electives_kpi_card_plain(
       title = "Median Time per View",
-      value = shiny::textOutput("electives_median_time"),
-      showcase = shiny::icon("clock"),
+      output_id = "electives_median_time",
+      icon_name = "clock",
       theme = "warning"
     )
   ),
@@ -116,22 +156,29 @@ ui_electives <- bslib::nav_panel(
     width = 1 / 3,
     heights_equal = "all",
 
-    bslib::value_box(
+    # Total Completions (UPDATED)
+    electives_kpi_card(
       title = "Total Completions",
-      value = shiny::textOutput("electives_total_completions"),
-      showcase = shiny::icon("check-circle"),
-      theme = "success"
+      output_id = "electives_total_completions",
+      icon_name = "check-circle",
+      theme = "success",
+      button_id = "btn_electives_total_completions"
     ),
-    bslib::value_box(
+
+    # Unique Completers (UPDATED)
+    electives_kpi_card(
       title = "Unique Completers",
-      value = shiny::textOutput("electives_unique_completers"),
-      showcase = shiny::icon("award"),
-      theme = "info"
+      output_id = "electives_unique_completers",
+      icon_name = "award",
+      theme = "info",
+      button_id = "btn_electives_unique_completers"
     ),
-    bslib::value_box(
+
+     # Median Time to Complete (UPDATED)
+    electives_kpi_card_plain(
       title = "Median Time to Complete",
-      value = shiny::textOutput("electives_median_time_to_complete"),
-      showcase = shiny::icon("stopwatch"),
+      output_id = "electives_median_time_to_complete",
+      icon_name = "stopwatch",
       theme = "warning"
     )
   ),
