@@ -1202,7 +1202,15 @@ server_electives <- function(input, output, session) {
     )
   })
 
-  # --- 2. Total Completions Modal ---
+  # Helper: Normalize elective names to match between page views and completions
+  normalize_elective_name <- function(name) {
+    dplyr::case_when(
+      name == "Skin as it Should be" ~ "Skin As It Should Be - Podcast Series",
+      TRUE ~ name
+    )
+  }
+
+  # --- 2. Total Completions Modal (FIXED with name normalization) ---
   shiny::observeEvent(input$btn_electives_total_completions, {
     shiny::showModal(shiny::modalDialog(
       title = "Total Completions Detail",
@@ -1214,10 +1222,29 @@ server_electives <- function(input, output, session) {
   })
 
   output$dt_electives_total_completions <- DT::renderDT({
-    df <- elective_completions()
-    shiny::req(nrow(df) > 0)
+    completions_df <- elective_completions()
+    views_df <- elective_page_views()
+    shiny::req(nrow(completions_df) > 0)
 
-    display <- df %>%
+    # Extract and normalize elective names from page views
+    views_df$elective_name <- extract_elective_name(views_df$page_path)
+    views_df$elective_name <- normalize_elective_name(views_df$elective_name)
+    views_df <- views_df %>% dplyr::filter(elective_name != "Unknown")
+
+    # Calculate active time per user per elective from page views
+    active_time <- views_df %>%
+      dplyr::group_by(user_id, elective_name) %>%
+      dplyr::summarise(
+        active_time_ms = sum(time_spent_ms, na.rm = TRUE),
+        .groups = "drop"
+      )
+
+    # Join completions with active time
+    display <- completions_df %>%
+      dplyr::left_join(
+        active_time,
+        by = c("user_id", "elective_name")
+      ) %>%
       dplyr::select(
         full_name,
         user_type,
@@ -1225,18 +1252,16 @@ server_electives <- function(input, output, session) {
         account_manager_name,
         elective_name,
         date_completed,
-        time_to_complete_seconds
+        active_time_ms
       ) %>%
       dplyr::arrange(dplyr::desc(date_completed)) %>%
       dplyr::mutate(
         `Completion Date` = as.Date(date_completed),
-        `Time to Complete` = sapply(time_to_complete_seconds, function(s) {
-          if (is.na(s)) {
-            return("N/A")
+        `Time Spent` = sapply(active_time_ms, function(ms) {
+          if (is.na(ms)) {
+            ms <- 0
           }
-          hours <- floor(s / 3600)
-          mins <- floor((s %% 3600) / 60)
-          if (hours > 0) paste0(hours, "h ", mins, "m") else paste0(mins, "m")
+          format_duration(ms)
         })
       ) %>%
       dplyr::select(
@@ -1246,7 +1271,8 @@ server_electives <- function(input, output, session) {
         `Account Manager` = account_manager_name,
         `Elective` = elective_name,
         `Completion Date`,
-        `Time to Complete`
+        `Time Spent`,
+        `Time Spent (ms)` = active_time_ms # Hidden column for sorting
       )
 
     DT::datatable(
@@ -1254,7 +1280,17 @@ server_electives <- function(input, output, session) {
       options = list(
         pageLength = 15,
         scrollX = TRUE,
-        order = list(list(5, 'desc'))
+        order = list(list(5, 'desc')),
+        columnDefs = list(
+          list(
+            targets = 7, # The hidden "Time Spent (ms)" column (0-indexed)
+            visible = FALSE
+          ),
+          list(
+            targets = 6, # The visible "Time Spent" column (0-indexed)
+            orderData = 7 # Sort based on the hidden numeric column
+          )
+        )
       ),
       rownames = FALSE,
       filter = "top"
@@ -1272,38 +1308,81 @@ server_electives <- function(input, output, session) {
     ))
   })
 
-  output$dt_electives_unique_completers <- DT::renderDT({
-    df <- elective_completions()
+  output$dt_electives_unique_learners <- DT::renderDT({
+    df <- elective_page_views()
     shiny::req(nrow(df) > 0)
 
-    user_summary <- df %>%
-      dplyr::group_by(user_id, full_name) %>%
-      dplyr::summarise(
-        user_type = dplyr::first(user_type),
-        country_name = dplyr::first(country_name),
-        account_manager_name = dplyr::first(account_manager_name),
-        total_completions = dplyr::n(),
-        last_completed = max(date_completed, na.rm = TRUE),
-        .groups = "drop"
-      ) %>%
-      dplyr::arrange(dplyr::desc(total_completions))
+    df$elective_name <- extract_elective_name(df$page_path)
+    df <- df %>% dplyr::filter(elective_name != "Unknown")
+    shiny::req(nrow(df) > 0)
+
+    has_name <- "full_name" %in% names(df)
+
+    if (has_name) {
+      user_summary <- df %>%
+        dplyr::group_by(user_id, full_name) %>%
+        dplyr::summarise(
+          user_type = dplyr::first(user_type),
+          country_name = dplyr::first(country_name),
+          account_manager_name = dplyr::first(account_manager_name),
+          elective_views = dplyr::n(),
+          electives_accessed = dplyr::n_distinct(elective_name),
+          total_time_ms = sum(time_spent_ms, na.rm = TRUE),
+          .groups = "drop"
+        )
+    } else {
+      user_summary <- df %>%
+        dplyr::group_by(user_id) %>%
+        dplyr::summarise(
+          user_type = dplyr::first(user_type),
+          country_name = dplyr::first(country_name),
+          account_manager_name = dplyr::first(account_manager_name),
+          elective_views = dplyr::n(),
+          electives_accessed = dplyr::n_distinct(elective_name),
+          total_time_ms = sum(time_spent_ms, na.rm = TRUE),
+          .groups = "drop"
+        )
+    }
+
+    user_summary <- user_summary %>% dplyr::arrange(dplyr::desc(elective_views))
 
     display <- data.frame(
-      "Name" = user_summary$full_name,
+      "Name" = if (has_name) {
+        user_summary$full_name
+      } else {
+        as.character(user_summary$user_id)
+      },
       "User Type" = user_summary$user_type,
       "Country" = user_summary$country_name,
       "Account Manager" = user_summary$account_manager_name,
-      "Total Completions" = user_summary$total_completions,
-      "Most Recent Completion" = as.Date(user_summary$last_completed),
+      "Elective Views" = user_summary$elective_views,
+      "Electives Accessed" = user_summary$electives_accessed,
+      "Total Time" = sapply(user_summary$total_time_ms, format_duration),
+      "Total Time (ms)" = user_summary$total_time_ms, # Hidden column for sorting
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
 
     DT::datatable(
       display,
-      options = list(pageLength = 15, scrollX = TRUE),
+      options = list(
+        pageLength = 15,
+        scrollX = TRUE,
+        columnDefs = list(
+          list(
+            targets = 7, # The hidden "Total Time (ms)" column (0-indexed)
+            visible = FALSE
+          ),
+          list(
+            targets = 6, # The visible "Total Time" column (0-indexed)
+            orderData = 7 # Sort based on the hidden numeric column
+          )
+        )
+      ),
       rownames = FALSE,
       filter = "top"
     )
   })
+
+  
 }

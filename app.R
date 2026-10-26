@@ -227,6 +227,22 @@ login_ui <- shiny::div(
       style = "text-align: center; color: #333; margin-bottom: 30px; font-size: 24px; font-weight: 600;"
     ),
     shiny::passwordInput("login_password", "Password:", width = "100%"),
+    
+    # --- NEW: REMEMBER ME CHECKBOX ---
+    shiny::div(
+      style = "display: flex; align-items: center; margin: 15px 0;",
+      shiny::tags$input(
+        type = "checkbox", 
+        id = "remember_me", 
+        style = "margin-right: 8px; cursor: pointer; transform: scale(1.2);"
+      ),
+      shiny::tags$label(
+        "for" = "remember_me",  # <-- QUOTED "for" TO AVOID R RESERVED WORD ERROR
+        "Remember me for 7 days", 
+        style = "color: #333; margin-bottom: 0; cursor: pointer; font-size: 14px; font-weight: 500;"
+      )
+    ),
+    
     shiny::actionButton(
       "login_btn",
       "Login",
@@ -236,11 +252,37 @@ login_ui <- shiny::div(
     shiny::uiOutput("login_error")
   )
 )
+
 # ==============================================================================
 # WRAPPER UI — decides which UI to show
 # ==============================================================================
 ui <- bslib::page_fluid(
   theme = professional_theme,
+  # --- COOKIE AUTH CHECK SCRIPT ---
+  shiny::tags$head(
+    shiny::tags$script(shiny::HTML(
+      "
+      $(document).ready(function() {
+        // Check if our auth cookie exists and is 'verified'
+        const cookies = document.cookie.split(';');
+        const authCookie = cookies.find(c => c.trim().startsWith('dash_auth='));
+        
+        if (authCookie && authCookie.split('=')[1] === 'verified') {
+          // Tell Shiny the cookie is valid, triggering auto-login
+          Shiny.setInputValue('cookie_auth_valid', true, {priority: 'event'});
+        }
+      });
+
+      // Custom message handler to SET or CLEAR the cookie from R
+      Shiny.addCustomMessageHandler('set_auth_cookie', function(message) {
+        const date = new Date();
+        date.setTime(date.getTime() + (message.days * 24 * 60 * 60 * 1000));
+        const expires = 'expires=' + date.toUTCString();
+        document.cookie = 'dash_auth=verified; ' + expires + '; path=/';
+      });
+      "
+    ))
+  ),
   shiny::uiOutput("app_ui")
 )
 
