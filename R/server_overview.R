@@ -6,35 +6,63 @@ server_overview <- function(input, output, session) {
   # ============================================================================
   # HELPER: Create standardized user table
   # ============================================================================
-  create_user_table <- function(data) {
-    display_data <- dplyr::select(
-      data,
-      "Name" = full_name,
-      "Role" = user_type,
-      "Country" = country_name,
-      "Stockist" = stockist_name, # NEW: Added Stockist
-      "Account Manager" = account_manager_name,
-      "Core 1" = core_1_completed,
-      "Last Active" = last_active_date
-      # REMOVED: "Region" = region_name
-    )
+  create_user_table <- function(data, show_last_completed = TRUE) {
+    if (show_last_completed) {
+      display_data <- dplyr::select(
+        data,
+        "Name" = full_name,
+        "Role" = user_type,
+        "Country" = country_name,
+        "Stockist" = stockist_name,
+        "Account Manager" = account_manager_name,
+        "Core 1" = core_1_completed,
+        "Last Completed" = last_core_module_completed,
+        "Last Active" = last_active_date
+      )
+    } else {
+      display_data <- dplyr::select(
+        data,
+        "Name" = full_name,
+        "Role" = user_type,
+        "Country" = country_name,
+        "Stockist" = stockist_name,
+        "Account Manager" = account_manager_name,
+        "Core 1" = core_1_completed,
+        "Last Active" = last_active_date
+      )
+    }
 
     display_data$"Core 1" <- ifelse(display_data$"Core 1" == TRUE, "Yes", "No")
 
-    DT::datatable(
-      display_data,
-      options = list(
-        pageLength = 10,
-        scrollX = TRUE,
-        columnDefs = list(
-          # Updated targets to account for the new column order
-          list(width = '200px', targets = c(0, 4)),
-          list(width = '100px', targets = c(1, 2, 3, 5, 6))
-        )
-      ),
-      rownames = FALSE,
-      filter = "top"
-    )
+    if (show_last_completed) {
+      DT::datatable(
+        display_data,
+        options = list(
+          pageLength = 10,
+          scrollX = TRUE,
+          columnDefs = list(
+            list(width = '200px', targets = c(0, 4)),
+            list(width = '100px', targets = c(1, 2, 3, 5, 6, 7))
+          )
+        ),
+        rownames = FALSE,
+        filter = "top"
+      )
+    } else {
+      DT::datatable(
+        display_data,
+        options = list(
+          pageLength = 10,
+          scrollX = TRUE,
+          columnDefs = list(
+            list(width = '200px', targets = c(0, 4)),
+            list(width = '100px', targets = c(1, 2, 3, 5, 6))
+          )
+        ),
+        rownames = FALSE,
+        filter = "top"
+      )
+    }
   }
 
   # ============================================================================
@@ -936,7 +964,7 @@ server_overview <- function(input, output, session) {
   output$user_table_not_started <- DT::renderDT({
     data <- filtered_user_data()
     metric_data <- dplyr::filter(data, not_started == TRUE)
-    create_user_table(metric_data)
+    create_user_table(metric_data, show_last_completed = FALSE)
   })
 
   output$level1_certified_table <- DT::renderDT({
@@ -952,6 +980,7 @@ server_overview <- function(input, output, session) {
       "Stockist" = certified$stockist_name,
       "Account Manager" = certified$account_manager_name,
       "Certified" = certified$level_1_certified_date,
+      "Last Completed" = certified$last_core_module_completed,
       check.names = FALSE,
       stringsAsFactors = FALSE
     )
@@ -985,6 +1014,7 @@ server_overview <- function(input, output, session) {
         "Stockist" = data$stockist_name,
         "Account Manager" = data$account_manager_name,
         "Certified" = data$level_1_certified_date,
+        "Last Completed" = data$last_core_module_completed,
         check.names = FALSE,
         stringsAsFactors = FALSE
       )
@@ -1003,6 +1033,7 @@ server_overview <- function(input, output, session) {
         "Stockist" = data$stockist_name,
         "Account Manager" = data$account_manager_name,
         "Core 1" = ifelse(data$core_1_completed == TRUE, "Yes", "No"),
+        "Last Completed" = data$last_core_module_completed,
         "Last Active" = data$last_active_date,
         check.names = FALSE,
         stringsAsFactors = FALSE
@@ -1026,6 +1057,7 @@ server_overview <- function(input, output, session) {
         "Stockist" = data$stockist_name,
         "Account Manager" = data$account_manager_name,
         "Core 1" = ifelse(data$core_1_completed == TRUE, "Yes", "No"),
+        "Last Completed" = data$last_core_module_completed,
         "Last Active" = data$last_active_date,
         check.names = FALSE,
         stringsAsFactors = FALSE
@@ -1049,6 +1081,7 @@ server_overview <- function(input, output, session) {
         "Stockist" = data$stockist_name,
         "Account Manager" = data$account_manager_name,
         "Core 1" = ifelse(data$core_1_completed == TRUE, "Yes", "No"),
+        "Last Completed" = data$last_core_module_completed,
         "Last Active" = data$last_active_date,
         check.names = FALSE,
         stringsAsFactors = FALSE
@@ -1070,7 +1103,8 @@ server_overview <- function(input, output, session) {
         "Country" = data$country_name,
         "Stockist" = data$stockist_name,
         "Account Manager" = data$account_manager_name,
-        "Core 1" = "Yes", # Hardcoded since it's already filtered
+        "Core 1" = "Yes",
+        "Last Completed" = data$last_core_module_completed,
         "Last Active" = data$last_active_date,
         check.names = FALSE,
         stringsAsFactors = FALSE
@@ -1093,6 +1127,7 @@ server_overview <- function(input, output, session) {
         "Stockist" = data$stockist_name,
         "Account Manager" = data$account_manager_name,
         "Core 1" = ifelse(data$core_1_completed == TRUE, "Yes", "No"),
+        "Last Completed" = data$last_core_module_completed,
         "Last Active" = data$last_active_date,
         check.names = FALSE,
         stringsAsFactors = FALSE

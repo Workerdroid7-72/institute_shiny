@@ -131,6 +131,17 @@ dashboard_ui <- bslib::page_navbar(
         ),
         shiny::tags$span(class = "mt-2 text-muted", "Loading data...")
       )
+    ),
+    # --- LOGOUT BUTTON (FIXED VISIBILITY) ---
+    shiny::div(
+      style = "position: fixed; right: 20px; top: 12px; z-index: 1050;",
+      shiny::actionButton(
+        "logout_btn",
+        "Logout",
+        icon = shiny::icon("right-from-bracket"),
+        class = "btn-sm",
+        style = "background-color: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.4); color: #ffffff;"
+      )
     )
   ),
 
@@ -181,8 +192,6 @@ login_ui <- shiny::div(
     justify-content: center;
   ",
 
- 
-
   shiny::tags$style(shiny::HTML(
     "
     /* Password input styling */
@@ -229,7 +238,7 @@ login_ui <- shiny::div(
       style = "text-align: center; color: #333; margin-bottom: 30px; font-size: 24px; font-weight: 600;"
     ),
     shiny::passwordInput("login_password", "Password:", width = "100%"),
-    
+
     # --- REMEMBER ME CHECKBOX ---
     shiny::div(
       style = "margin: 15px 0;",
@@ -243,7 +252,7 @@ login_ui <- shiny::div(
         width = "100%"
       )
     ),
-    
+
     shiny::actionButton(
       "login_btn",
       "Login",
@@ -259,7 +268,7 @@ login_ui <- shiny::div(
 # ==============================================================================
 ui <- bslib::page_fluid(
   theme = professional_theme,
-  
+
   # --- COOKIE CHECK SCRIPT (SIMPLIFIED) ---
   shiny::tags$head(
     shiny::tags$script(shiny::HTML(
@@ -307,7 +316,7 @@ ui <- bslib::page_fluid(
       "
     ))
   ),
-  
+
   shiny::uiOutput("app_ui")
 )
 

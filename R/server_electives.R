@@ -1297,7 +1297,7 @@ server_electives <- function(input, output, session) {
     )
   })
 
-  # --- 3. Unique Completers Modal ---
+  # --- 3. Unique Completers Modal (FIXED) ---
   shiny::observeEvent(input$btn_electives_unique_completers, {
     shiny::showModal(shiny::modalDialog(
       title = "Unique Completers Detail",
@@ -1306,6 +1306,48 @@ server_electives <- function(input, output, session) {
       DT::DTOutput("dt_electives_unique_completers"),
       footer = shiny::modalButton("Close")
     ))
+  })
+
+  output$dt_electives_unique_completers <- DT::renderDT({
+    df <- elective_completions()
+    shiny::req(nrow(df) > 0)
+
+    user_summary <- df %>%
+      dplyr::group_by(user_id, full_name) %>%
+      dplyr::summarise(
+        user_type = dplyr::first(user_type),
+        country_name = dplyr::first(country_name),
+        account_manager_name = dplyr::first(account_manager_name),
+        total_completions = dplyr::n(),
+        last_completed = suppressWarnings(max(
+          as.Date(date_completed),
+          na.rm = TRUE
+        )),
+        .groups = "drop"
+      ) %>%
+      dplyr::mutate(
+        # Replace -Inf (from all-NA groups) with NA
+        last_completed = ifelse(is.infinite(last_completed), NA, last_completed)
+      ) %>%
+      dplyr::arrange(dplyr::desc(total_completions))
+
+    display <- data.frame(
+      "Name" = user_summary$full_name,
+      "User Type" = user_summary$user_type,
+      "Country" = user_summary$country_name,
+      "Account Manager" = user_summary$account_manager_name,
+      "Total Completions" = user_summary$total_completions,
+      "Most Recent Completion" = user_summary$last_completed,
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+
+    DT::datatable(
+      display,
+      options = list(pageLength = 15, scrollX = TRUE),
+      rownames = FALSE,
+      filter = "top"
+    )
   })
 
   output$dt_electives_unique_learners <- DT::renderDT({
@@ -1383,6 +1425,4 @@ server_electives <- function(input, output, session) {
       filter = "top"
     )
   })
-
-  
 }
