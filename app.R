@@ -224,6 +224,20 @@ login_ui <- shiny::div(
   "
   )),
 
+  # Pressing Enter in the password box clicks Login. Delegated handler because
+  # the form is created by renderUI after page load; 'change' makes Shiny send
+  # the typed password immediately instead of after its ~250 ms debounce.
+  shiny::tags$script(shiny::HTML(
+    "
+    $(document).on('keydown', '#login_password', function(e) {
+      if (e.key === 'Enter') {
+        $(this).trigger('change');
+        $('#login_btn').click();
+      }
+    });
+  "
+  )),
+
   shiny::div(
     style = "
       max-width: 400px;
@@ -269,50 +283,27 @@ login_ui <- shiny::div(
 ui <- bslib::page_fluid(
   theme = professional_theme,
 
-  # --- COOKIE CHECK SCRIPT (SIMPLIFIED) ---
+  # --- AUTH COOKIE SCRIPT ---
+  # The cookie holds a server-signed token (see make_auth_token in global.R).
+  # The browser only stores and returns it; the server decides if it is valid.
   shiny::tags$head(
     shiny::tags$script(shiny::HTML(
       "
-      // Run immediately, no waiting for jQuery or Shiny
-      (function() {
-        console.log('=== COOKIE CHECK SCRIPT RUNNING ===');
-        console.log('Current cookies:', document.cookie);
-        
-        // Check for auth cookie
-        var cookies = document.cookie.split(';');
-        for (var i = 0; i < cookies.length; i++) {
-          var cookie = cookies[i].trim();
-          if (cookie.startsWith('dash_auth=')) {
-            var value = cookie.substring('dash_auth='.length);
-            console.log('Found dash_auth cookie with value:', value);
-            if (value === 'verified') {
-              console.log('✅ AUTH COOKIE VALID - will auto-login');
-              // Store flag for when Shiny connects
-              window.__dashAuthValid = true;
-            }
-          }
-        }
-      })();
-      
-      // When Shiny connects, send the flag
-      if (typeof Shiny !== 'undefined') {
+      $(document).on('shiny:connected', function() {
         Shiny.addCustomMessageHandler('set_auth_cookie', function(message) {
-          console.log('Setting cookie for', message.days, 'days');
           var date = new Date();
           date.setTime(date.getTime() + (message.days * 24 * 60 * 60 * 1000));
-          var expires = 'expires=' + date.toUTCString();
-          document.cookie = 'dash_auth=verified; ' + expires + '; path=/';
-          console.log('Cookie set:', document.cookie);
+          document.cookie = 'dash_auth=' + (message.token || '') +
+            '; expires=' + date.toUTCString() +
+            '; path=/; SameSite=Lax' +
+            (location.protocol === 'https:' ? '; Secure' : '');
         });
-        
-        // Check if we already have the flag and send it
-        if (window.__dashAuthValid === true) {
-          setTimeout(function() {
-            console.log('✅ Sending cookie_auth_valid to Shiny');
-            Shiny.setInputValue('cookie_auth_valid', true, {priority: 'event'});
-          }, 100);
+
+        var match = document.cookie.match(/(?:^|;\\s*)dash_auth=([^;]+)/);
+        if (match) {
+          Shiny.setInputValue('auth_token', match[1], {priority: 'event'});
         }
-      }
+      });
       "
     ))
   ),
@@ -329,19 +320,16 @@ server <- function(input, output, session) {
 
   # 1. Handle cookie-based auto-login
   shiny::observeEvent(
-    input$cookie_auth_valid,
+    input$auth_token,
     {
-      cat(
-        "🔍 DEBUG: cookie_auth_valid triggered with value:",
-        input$cookie_auth_valid,
-        "\n"
-      )
-      if (isTRUE(input$cookie_auth_valid)) {
-        cat("✅ DEBUG: Setting authenticated to TRUE via cookie\n")
+      if (verify_auth_token(input$auth_token)) {
         authenticated(TRUE)
       }
     },
-    ignoreInit = TRUE
+    # The browser sends the cookie token as part of the session's initial
+    # inputs, so it must NOT be skipped as "init" (a missing cookie is NULL,
+    # which observeEvent already ignores).
+    ignoreInit = FALSE
   )
 
   # 2. Render the appropriate UI
@@ -355,24 +343,21 @@ server <- function(input, output, session) {
 
   # 3. Handle login
   shiny::observeEvent(input$login_btn, {
-    cat("🔍 DEBUG: login_btn clicked.\n")
-    cat("   - Password length:", nchar(input$login_password), "\n")
-    cat("   - Remember me value:", input$remember_me, "\n")
-
     output$login_error <- shiny::renderUI(NULL)
 
     if (
-      isTRUE(nchar(input$login_password) > 0) &&
-        input$login_password == APP_PASSWORD
+      nzchar(APP_PASSWORD) &&
+        isTRUE(nchar(input$login_password) > 0) &&
+        identical(input$login_password, APP_PASSWORD)
     ) {
       authenticated(TRUE)
 
-      # If "Remember me" is checked, set the cookie for 7 days
+      # If "Remember me" is checked, issue a signed token valid for 7 days
       if (isTRUE(input$remember_me)) {
-        cat("✅ DEBUG: Sending custom message to set cookie for 7 days\n")
-        session$sendCustomMessage("set_auth_cookie", list(days = 7))
-      } else {
-        cat("⚠️ DEBUG: Remember me is FALSE or NULL\n")
+        session$sendCustomMessage(
+          "set_auth_cookie",
+          list(days = 7, token = make_auth_token(7))
+        )
       }
     } else {
       output$login_error <- shiny::renderUI({
@@ -386,27 +371,29 @@ server <- function(input, output, session) {
 
   # 4. Handle logout
   shiny::observeEvent(input$logout_btn, {
-    cat("🔍 DEBUG: Logout clicked. Clearing cookie.\n")
     authenticated(FALSE)
     # Clear the cookie by setting its expiration to the past (-1 day)
-    session$sendCustomMessage("set_auth_cookie", list(days = -1))
+    session$sendCustomMessage("set_auth_cookie", list(days = -1, token = ""))
+    # Reload so the next login starts a fresh session (no stale filters and the
+    # dashboard server starts again); the cookie is already cleared above.
+    session$reload()
   })
 
   # 5. CRITICAL: Call dashboard_server ONLY AFTER the UI is rendered
-  shiny::observeEvent(
-    authenticated(),
-    {
-      if (authenticated()) {
-        session$onFlushed(
-          function() {
-            dashboard_server(input, output, session)
-          },
-          once = TRUE
-        )
-      }
-    },
-    once = TRUE,
-    ignoreInit = TRUE
-  )
+  # A flag (not once/ignoreInit) so this also works when `authenticated` is
+  # already TRUE at page load (cookie login) as well as when it turns TRUE
+  # after a password login.
+  dashboard_started <- FALSE
+  shiny::observeEvent(authenticated(), {
+    if (authenticated() && !dashboard_started) {
+      dashboard_started <<- TRUE
+      session$onFlushed(
+        function() {
+          dashboard_server(input, output, session)
+        },
+        once = TRUE
+      )
+    }
+  })
 }
 shiny::shinyApp(ui = ui, server = server)
