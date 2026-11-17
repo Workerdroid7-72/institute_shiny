@@ -161,62 +161,48 @@ server_overview <- function(input, output, session) {
     # Skip the "Loading..." placeholder state (re-runs once they are populated)
     shiny::req(!identical(selected_country, ""), !identical(selected_region, ""))
 
-    if (
-      (is.null(selected_country) || selected_country == "All") &&
-        (is.null(selected_region) || selected_region == "All")
-    ) {
-      query <- "
-        SELECT DISTINCT am.fname || ' ' || am.lname AS account_manager_name
-        FROM z_institute_users am
-        WHERE am.user_id IN (SELECT DISTINCT account_manager FROM z_institute_users WHERE account_manager IS NOT NULL)
-        ORDER BY account_manager_name;
-      "
-    } else if (
-      !is.null(selected_country) &&
-        selected_country != "All" &&
-        (is.null(selected_region) ||
-          selected_region == "All")
-    ) {
-      query <- sprintf(
+    country_set <- !is.null(selected_country) && selected_country != "All"
+    region_set <- !is.null(selected_region) && selected_region != "All"
+
+    if (!country_set && !region_set) {
+      # Everyone who is an account manager
+      df <- get_cached("account_managers_all", function() {
+        DBI::dbGetQuery(
+          con,
+          "
+          SELECT DISTINCT am.fname || ' ' || am.lname AS account_manager_name
+          FROM z_institute_users am
+          WHERE am.user_id IN (SELECT DISTINCT account_manager FROM z_institute_users WHERE account_manager IS NOT NULL)
+          ORDER BY account_manager_name;
         "
-        SELECT DISTINCT am.fname || ' ' || am.lname AS account_manager_name
-        FROM z_institute_users am
-        JOIN z_institute_lookup_region_manager rm ON am.user_id = rm.user_id
-        JOIN z_institute_lookup_region r ON rm.region_id = r.region_id
-        JOIN z_institute_lookup_country c ON r.country_id = c.country_id
-        WHERE c.country_name = '%s'
-        ORDER BY account_manager_name;
-      ",
-        selected_country
-      )
-    } else if (
-      !is.null(selected_region) &&
-        selected_region != "All"
-    ) {
-      query <- sprintf(
-        "
-        SELECT DISTINCT am.fname || ' ' || am.lname AS account_manager_name
-        FROM z_institute_users am
-        JOIN z_institute_lookup_region_manager rm ON am.user_id = rm.user_id
-        JOIN z_institute_lookup_region r ON rm.region_id = r.region_id
-        WHERE r.region_name = '%s'
-        ORDER BY account_manager_name;
-      ",
-        selected_region
-      )
+        )
+      })
     } else {
-      query <- "SELECT DISTINCT 'None' AS account_manager_name;"
+      # One cached manager -> region -> country map, filtered here in R, so
+      # picking a country or region needs no query (and no SQL built from the
+      # selected value). A selected region wins over a selected country.
+      manager_map <- get_cached("account_manager_map", function() {
+        DBI::dbGetQuery(
+          con,
+          "
+          SELECT DISTINCT am.fname || ' ' || am.lname AS account_manager_name,
+                 r.region_name, c.country_name
+          FROM z_institute_users am
+          JOIN z_institute_lookup_region_manager rm ON am.user_id = rm.user_id
+          JOIN z_institute_lookup_region r ON rm.region_id = r.region_id
+          LEFT JOIN z_institute_lookup_country c ON r.country_id = c.country_id
+          ORDER BY account_manager_name;
+        "
+        )
+      })
+      keep <- if (region_set) {
+        !is.na(manager_map$region_name) & manager_map$region_name == selected_region
+      } else {
+        !is.na(manager_map$country_name) & manager_map$country_name == selected_country
+      }
+      df <- manager_map[keep, , drop = FALSE]
     }
 
-    df <- get_cached(
-      paste(
-        "account_managers",
-        if (is.null(selected_country)) "All" else selected_country,
-        if (is.null(selected_region)) "All" else selected_region,
-        sep = "|"
-      ),
-      function() DBI::dbGetQuery(con, query)
-    )
     am_choices <- c("All", unique(df$account_manager_name))
     if (!"None / Company Staff" %in% am_choices) {
       am_choices <- c(am_choices, "None / Company Staff")
