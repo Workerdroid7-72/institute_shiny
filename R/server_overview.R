@@ -205,7 +205,15 @@ server_overview <- function(input, output, session) {
       query <- "SELECT DISTINCT 'None' AS account_manager_name;"
     }
 
-    df <- DBI::dbGetQuery(con, query)
+    df <- get_cached(
+      paste(
+        "account_managers",
+        if (is.null(selected_country)) "All" else selected_country,
+        if (is.null(selected_region)) "All" else selected_region,
+        sep = "|"
+      ),
+      function() DBI::dbGetQuery(con, query)
+    )
     am_choices <- c("All", unique(df$account_manager_name))
     if (!"None / Company Staff" %in% am_choices) {
       am_choices <- c(am_choices, "None / Company Staff")

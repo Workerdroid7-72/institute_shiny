@@ -101,6 +101,17 @@ get_view <- function(name, ttl = 600) {
   entry$data
 }
 
+# Cache the result of an arbitrary fetch function under `key` (same store,
+# TTL and refresh as get_view).
+get_cached <- function(key, fetch, ttl = 600) {
+  entry <- .view_cache[[key]]
+  if (is.null(entry) || difftime(Sys.time(), entry$fetched, units = "secs") > ttl) {
+    entry <- list(data = fetch(), fetched = Sys.time())
+    assign(key, entry, envir = .view_cache)
+  }
+  entry$data
+}
+
 refresh_views <- function() {
   rm(list = ls(.view_cache), envir = .view_cache)
   invisible(NULL)

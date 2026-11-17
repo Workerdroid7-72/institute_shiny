@@ -188,13 +188,11 @@ boundary_page_counts <- function(df, type) {
 # ==============================================================================
 server_visits <- function(input, output, session) {
   # ----------------------------------------------------------------------------
-  # Load visit summary data for this tab
+  # Visit data for this tab: served from the shared view cache, and only fetched
+  # when a Visits output first needs it (not at session start).
   # ----------------------------------------------------------------------------
-  visit_summary_data <- DBI::dbGetQuery(con, "SELECT * FROM vw_visit_summary;")
-  visit_page_views_data <- DBI::dbGetQuery(
-    con,
-    "SELECT * FROM vw_visit_page_views;"
-  )
+  visit_summary_data <- shiny::reactive(view_data("vw_visit_summary"))
+  visit_page_views_data <- shiny::reactive(view_data("vw_visit_page_views"))
 
   # ----------------------------------------------------------------------------
   # Track active visits subtab
@@ -262,9 +260,7 @@ server_visits <- function(input, output, session) {
   # Reactive: Data filtered by GLOBAL filters only (no dates yet)
   # ----------------------------------------------------------------------------
   global_filtered_data <- shiny::reactive({
-    shiny::req(visit_summary_data)
-
-    df <- visit_summary_data
+    df <- visit_summary_data()
 
     # Ensure types are correct
     df$visit_date <- as.Date(df$visit_date)
@@ -1019,9 +1015,7 @@ server_visits <- function(input, output, session) {
   # Filtered page views (for content vs non-content analysis)
   # ----------------------------------------------------------------------------
   filtered_page_views <- shiny::reactive({
-    shiny::req(visit_page_views_data)
-
-    df <- visit_page_views_data
+    df <- visit_page_views_data()
     df$visit_date <- as.Date(df$visit_date)
 
     # Date filter

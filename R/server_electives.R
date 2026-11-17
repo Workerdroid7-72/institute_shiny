@@ -9,8 +9,11 @@ server_electives <- function(input, output, session) {
   #      -> "Mastering The Consultation Process"
   # --------------------------------------------------------------------------
   extract_elective_name <- function(page_paths) {
-    sapply(
-      page_paths,
+    # Work out each DISTINCT path once, then map back to every row: there are
+    # far fewer distinct paths than rows, so this is much faster on large data.
+    unique_paths <- unique(page_paths)
+    unique_names <- sapply(
+      unique_paths,
       function(p) {
         if (is.na(p) || p == "") {
           return("Unknown")
@@ -28,6 +31,7 @@ server_electives <- function(input, output, session) {
       },
       USE.NAMES = FALSE
     )
+    unique_names[match(page_paths, unique_paths)]
   }
 
   # --------------------------------------------------------------------------
@@ -51,13 +55,20 @@ server_electives <- function(input, output, session) {
   # REACTIVE: elective page views, respecting the global sidebar filters
   # --------------------------------------------------------------------------
   elective_page_views <- shiny::reactive({
-    df <- DBI::dbGetQuery(
-      con,
+    # Only the elective rows are fetched (and cached) -- far smaller than the
+    # full vw_visit_page_views, which Visits loads separately when needed.
+    if (!is.null(session$userData$data_version)) {
+      session$userData$data_version() # re-fetch after the Refresh button
+    }
+    df <- get_cached("elective_visit_page_views", function() {
+      DBI::dbGetQuery(
+        con,
+        "
+        SELECT * FROM vw_visit_page_views
+        WHERE page_path LIKE '%learning/elective%'
       "
-      SELECT * FROM vw_visit_page_views
-      WHERE page_path LIKE '%learning/elective%'
-    "
-    )
+      )
+    })
 
     if (
       !is.null(input$filter_country) &&
@@ -220,6 +231,7 @@ server_electives <- function(input, output, session) {
   # OBSERVER: populate the elective filter dropdown
   # --------------------------------------------------------------------------
   shiny::observe({
+    shiny::req(input$main_tabs == "Electives") # only while the tab is open
     df <- elective_completions()
     electives <- sort(unique(df$elective_name[!is.na(df$elective_name)]))
     choices <- c("All Electives" = "all", setNames(electives, electives))
@@ -668,7 +680,7 @@ server_electives <- function(input, output, session) {
   # REACTIVE: elective page views WITH lesson metadata (for the deep-dive)
   # --------------------------------------------------------------------------
   elective_detail_data <- shiny::reactive({
-    df <- DBI::dbGetQuery(con, "SELECT * FROM vw_elective_page_views")
+    df <- view_data("vw_elective_page_views")
 
     if (
       !is.null(input$filter_country) &&
@@ -719,7 +731,7 @@ server_electives <- function(input, output, session) {
   # REACTIVE: all elective enrollments (started + completed)
   # --------------------------------------------------------------------------
   elective_enrollments <- shiny::reactive({
-    df <- DBI::dbGetQuery(con, "SELECT * FROM vw_elective_enrollments")
+    df <- view_data("vw_elective_enrollments")
 
     if (
       !is.null(input$filter_country) &&
@@ -788,6 +800,7 @@ server_electives <- function(input, output, session) {
   # OBSERVER: populate the elective dropdown for completer drill-down
   # --------------------------------------------------------------------------
   shiny::observe({
+    shiny::req(input$main_tabs == "Electives") # only while the tab is open
     df <- elective_completions()
     electives <- sort(unique(df$elective_name[!is.na(df$elective_name)]))
     shiny::updateSelectInput(
@@ -945,7 +958,7 @@ server_electives <- function(input, output, session) {
   # REACTIVE: elective completions data, respecting the global sidebar filters
   # --------------------------------------------------------------------------
   elective_completions <- shiny::reactive({
-    df <- DBI::dbGetQuery(con, "SELECT * FROM vw_elective_completions")
+    df <- view_data("vw_elective_completions")
 
     if (
       !is.null(input$filter_country) &&
@@ -996,6 +1009,7 @@ server_electives <- function(input, output, session) {
   # OBSERVER: populate the deep-dive elective dropdown
   # --------------------------------------------------------------------------
   shiny::observe({
+    shiny::req(input$main_tabs == "Electives") # only while the tab is open
     df <- elective_detail_data()
     electives <- sort(unique(df$elective_name[!is.na(df$elective_name)]))
     shiny::updateSelectInput(session, "deepdive_elective", choices = electives)
