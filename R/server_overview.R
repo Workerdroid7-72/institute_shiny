@@ -110,14 +110,11 @@ server_overview <- function(input, output, session) {
   # OBSERVER 1: Populate Country dropdown
   # ============================================================================
   shiny::observe({
-    df <- DBI::dbGetQuery(
-      con,
-      "SELECT DISTINCT country_name FROM vw_platform_users_flat ORDER BY country_name;"
-    )
+    df <- get_view("vw_platform_users_flat")
     shiny::updateSelectInput(
       session,
       "filter_country",
-      choices = c("All", unique(df$country_name)),
+      choices = c("All", sort(unique(df$country_name))),
       selected = "All"
     )
   })
@@ -128,25 +125,15 @@ server_overview <- function(input, output, session) {
   shiny::observe({
     selected_country <- input$filter_country
 
-    if (is.null(selected_country) || selected_country == "All") {
-      df <- DBI::dbGetQuery(
-        con,
-        "SELECT DISTINCT region_name FROM vw_platform_users_flat ORDER BY region_name;"
-      )
-    } else {
-      df <- DBI::dbGetQuery(
-        con,
-        sprintf(
-          "SELECT DISTINCT region_name FROM vw_platform_users_flat WHERE country_name = '%s' ORDER BY region_name;",
-          selected_country
-        )
-      )
+    df <- get_view("vw_platform_users_flat")
+    if (!is.null(selected_country) && selected_country != "All") {
+      df <- dplyr::filter(df, country_name == selected_country)
     }
 
     shiny::updateSelectInput(
       session,
       "filter_region",
-      choices = c("All", unique(df$region_name)),
+      choices = c("All", sort(unique(df$region_name))),
       selected = "All"
     )
   })
@@ -155,14 +142,11 @@ server_overview <- function(input, output, session) {
   # OBSERVER 3: Populate User Type dropdown
   # ============================================================================
   shiny::observe({
-    df <- DBI::dbGetQuery(
-      con,
-      "SELECT DISTINCT user_type FROM vw_platform_users_flat ORDER BY user_type;"
-    )
+    df <- get_view("vw_platform_users_flat")
     shiny::updateSelectInput(
       session,
       "filter_user_type",
-      choices = c("All", unique(df$user_type)),
+      choices = c("All", sort(unique(df$user_type))),
       selected = "All"
     )
   })
@@ -239,39 +223,7 @@ server_overview <- function(input, output, session) {
   # REACTIVE: Filtered user data
   # ============================================================================
   filtered_user_data <- shiny::reactive({
-    raw_data <- DBI::dbGetQuery(con, "SELECT * FROM vw_platform_users_flat;")
-    filtered <- raw_data
-
-    if (!is.null(input$filter_country) && input$filter_country != "All") {
-      filtered <- dplyr::filter(filtered, country_name == input$filter_country)
-    }
-
-    if (!is.null(input$filter_region) && input$filter_region != "All") {
-      filtered <- dplyr::filter(filtered, region_name == input$filter_region)
-    }
-
-    if (!is.null(input$filter_user_type) && input$filter_user_type != "All") {
-      filtered <- dplyr::filter(filtered, user_type == input$filter_user_type)
-    }
-
-    if (
-      !is.null(input$filter_account_mgr) && input$filter_account_mgr != "All"
-    ) {
-      if (input$filter_account_mgr == "None / Company Staff") {
-        filtered <- dplyr::filter(
-          filtered,
-          is.na(account_manager_name) |
-            account_manager_name == "None / Company Staff"
-        )
-      } else {
-        filtered <- dplyr::filter(
-          filtered,
-          account_manager_name == input$filter_account_mgr
-        )
-      }
-    }
-
-    return(filtered)
+    apply_sidebar_filters(view_data("vw_platform_users_flat"), input)
   })
 
   # ============================================================================
@@ -279,35 +231,11 @@ server_overview <- function(input, output, session) {
   # countries stay visible for comparison)
   # ============================================================================
   country_chart_data <- shiny::reactive({
-    raw_data <- DBI::dbGetQuery(con, "SELECT * FROM vw_platform_users_flat;")
-    filtered <- raw_data
-
-    if (!is.null(input$filter_region) && input$filter_region != "All") {
-      filtered <- dplyr::filter(filtered, region_name == input$filter_region)
-    }
-
-    if (!is.null(input$filter_user_type) && input$filter_user_type != "All") {
-      filtered <- dplyr::filter(filtered, user_type == input$filter_user_type)
-    }
-
-    if (
-      !is.null(input$filter_account_mgr) && input$filter_account_mgr != "All"
-    ) {
-      if (input$filter_account_mgr == "None / Company Staff") {
-        filtered <- dplyr::filter(
-          filtered,
-          is.na(account_manager_name) |
-            account_manager_name == "None / Company Staff"
-        )
-      } else {
-        filtered <- dplyr::filter(
-          filtered,
-          account_manager_name == input$filter_account_mgr
-        )
-      }
-    }
-
-    return(filtered)
+    apply_sidebar_filters(
+      view_data("vw_platform_users_flat"),
+      input,
+      skip_country = TRUE
+    )
   })
 
   # ============================================================================
