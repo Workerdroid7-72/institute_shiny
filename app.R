@@ -132,9 +132,16 @@ dashboard_ui <- bslib::page_navbar(
         shiny::tags$span(class = "mt-2 text-muted", "Loading data...")
       )
     ),
-    # --- LOGOUT BUTTON (FIXED VISIBILITY) ---
+    # --- REFRESH + LOGOUT BUTTONS (FIXED VISIBILITY) ---
     shiny::div(
-      style = "position: fixed; right: 20px; top: 12px; z-index: 1050;",
+      style = "position: fixed; right: 20px; top: 12px; z-index: 1050; display: flex; gap: 8px;",
+      shiny::actionButton(
+        "refresh_btn",
+        "Refresh data",
+        icon = shiny::icon("rotate"),
+        class = "btn-sm",
+        style = "background-color: rgba(255, 255, 255, 0.15); border: 1px solid rgba(255, 255, 255, 0.4); color: #ffffff;"
+      ),
       shiny::actionButton(
         "logout_btn",
         "Logout",
@@ -161,6 +168,15 @@ dashboard_ui <- bslib::page_navbar(
 # ==============================================================================
 
 dashboard_server <- function(input, output, session) {
+  # Refresh button: drop the shared view cache and bump this session's counter
+  # so every reactive using view_data() re-fetches.
+  session$userData$data_version <- shiny::reactiveVal(0)
+  shiny::observeEvent(input$refresh_btn, {
+    refresh_views()
+    session$userData$data_version(session$userData$data_version() + 1)
+    shiny::showNotification("Data refreshed.", type = "message", duration = 3)
+  })
+
   # Overview tab
   server_overview(input, output, session)
   #characteristics tab
