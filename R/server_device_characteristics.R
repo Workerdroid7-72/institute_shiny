@@ -8,43 +8,9 @@ server_device_characteristics <- function(input, output, session) {
   # REACTIVE: Device data with filters
   # ============================================================================
   device_data <- shiny::reactive({
-    raw_data <- DBI::dbGetQuery(con, "SELECT * FROM vw_device_characteristics;")
-    filtered <- raw_data
-    
-    # Country Filter
-    if (!is.null(input$filter_country) && input$filter_country != "All") {
-      filtered <- dplyr::filter(filtered, country_name == input$filter_country)
-    }
-    
-    # Region Filter
-    if (!is.null(input$filter_region) && input$filter_region != "All") {
-      filtered <- dplyr::filter(filtered, region_name == input$filter_region)
-    }
-    
-    # User Type Filter
-    if (!is.null(input$filter_user_type) && input$filter_user_type != "All") {
-      filtered <- dplyr::filter(filtered, user_type == input$filter_user_type)
-    }
-    
-    # Account Manager Filter
-    if (!is.null(input$filter_account_mgr) && input$filter_account_mgr != "All") {
-      if (input$filter_account_mgr == "None / Company Staff") {
-        filtered <- dplyr::filter(
-          filtered, 
-          is.na(account_manager_name) | 
-            account_manager_name == "None / Company Staff"
-        )
-      } else {
-        filtered <- dplyr::filter(
-          filtered, 
-          account_manager_name == input$filter_account_mgr
-        )
-      }
-    }
-    
-    return(filtered)
+    apply_sidebar_filters(view_data("vw_device_characteristics"), input)
   })
-  
+
   # ============================================================================
   # METRICS
   # ============================================================================

@@ -158,6 +158,9 @@ server_overview <- function(input, output, session) {
     selected_country <- input$filter_country
     selected_region <- input$filter_region
 
+    # Skip the "Loading..." placeholder state (re-runs once they are populated)
+    shiny::req(!identical(selected_country, ""), !identical(selected_region, ""))
+
     if (
       (is.null(selected_country) || selected_country == "All") &&
         (is.null(selected_region) || selected_region == "All")

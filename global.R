@@ -129,17 +129,27 @@ view_data <- function(name, session = shiny::getDefaultReactiveDomain()) {
 # ============================================================================
 # SIDEBAR FILTERS (country / region / user type / account manager)
 # ============================================================================
-apply_sidebar_filters <- function(df, input, skip_country = FALSE) {
-  if (!skip_country && !is.null(input$filter_country) && input$filter_country != "All") {
+apply_sidebar_filters <- function(
+  df,
+  input,
+  skip_country = FALSE,
+  blank_is_all = FALSE
+) {
+  # blank_is_all = TRUE treats the "" placeholder (before the dropdowns have
+  # loaded) like "All"; a filter is also skipped if its column is not in `df`.
+  is_active <- function(x) {
+    !is.null(x) && x != "All" && !(blank_is_all && x == "")
+  }
+  if (!skip_country && is_active(input$filter_country) && "country_name" %in% names(df)) {
     df <- dplyr::filter(df, country_name == input$filter_country)
   }
-  if (!is.null(input$filter_region) && input$filter_region != "All") {
+  if (is_active(input$filter_region) && "region_name" %in% names(df)) {
     df <- dplyr::filter(df, region_name == input$filter_region)
   }
-  if (!is.null(input$filter_user_type) && input$filter_user_type != "All") {
+  if (is_active(input$filter_user_type) && "user_type" %in% names(df)) {
     df <- dplyr::filter(df, user_type == input$filter_user_type)
   }
-  if (!is.null(input$filter_account_mgr) && input$filter_account_mgr != "All") {
+  if (is_active(input$filter_account_mgr) && "account_manager_name" %in% names(df)) {
     if (input$filter_account_mgr == "None / Company Staff") {
       df <- dplyr::filter(
         df,
@@ -151,4 +161,12 @@ apply_sidebar_filters <- function(df, input, skip_country = FALSE) {
     }
   }
   df
+}
+
+# Like view_data(), but for an arbitrary cached fetch (e.g. a custom query).
+cached_query <- function(key, fetch, session = shiny::getDefaultReactiveDomain()) {
+  if (!is.null(session$userData$data_version)) {
+    session$userData$data_version()
+  }
+  get_cached(key, fetch)
 }
