@@ -78,3 +78,66 @@ verify_auth_token <- function(token) {
   }
   identical(parts[2], digest::hmac(AUTH_SECRET, parts[1], "sha256"))
 }
+
+# ============================================================================
+# SHARED VIEW CACHE
+# ============================================================================
+# Whole views are fetched once and shared by every session in this R process,
+# then re-fetched only when older than `ttl` seconds (default 10 minutes) or
+# after refresh_views(). Filtering happens in R on the cached data frame, so a
+# filter change no longer costs a database round trip. R is single-threaded per
+# process, so no locking is needed.
+.view_cache <- new.env(parent = emptyenv())
+
+get_view <- function(name, ttl = 600) {
+  entry <- .view_cache[[name]]
+  if (is.null(entry) || difftime(Sys.time(), entry$fetched, units = "secs") > ttl) {
+    entry <- list(
+      data = DBI::dbGetQuery(con, sprintf("SELECT * FROM %s;", name)),
+      fetched = Sys.time()
+    )
+    assign(name, entry, envir = .view_cache)
+  }
+  entry$data
+}
+
+refresh_views <- function() {
+  rm(list = ls(.view_cache), envir = .view_cache)
+  invisible(NULL)
+}
+
+# Cached view, plus a dependency on this session's refresh counter so reactives
+# re-run when the Refresh button is pressed.
+view_data <- function(name, session = shiny::getDefaultReactiveDomain()) {
+  if (!is.null(session$userData$data_version)) {
+    session$userData$data_version()
+  }
+  get_view(name)
+}
+
+# ============================================================================
+# SIDEBAR FILTERS (country / region / user type / account manager)
+# ============================================================================
+apply_sidebar_filters <- function(df, input, skip_country = FALSE) {
+  if (!skip_country && !is.null(input$filter_country) && input$filter_country != "All") {
+    df <- dplyr::filter(df, country_name == input$filter_country)
+  }
+  if (!is.null(input$filter_region) && input$filter_region != "All") {
+    df <- dplyr::filter(df, region_name == input$filter_region)
+  }
+  if (!is.null(input$filter_user_type) && input$filter_user_type != "All") {
+    df <- dplyr::filter(df, user_type == input$filter_user_type)
+  }
+  if (!is.null(input$filter_account_mgr) && input$filter_account_mgr != "All") {
+    if (input$filter_account_mgr == "None / Company Staff") {
+      df <- dplyr::filter(
+        df,
+        is.na(account_manager_name) |
+          account_manager_name == "None / Company Staff"
+      )
+    } else {
+      df <- dplyr::filter(df, account_manager_name == input$filter_account_mgr)
+    }
+  }
+  df
+}
